@@ -277,10 +277,10 @@ export class Waveform {
     const height = this.height || this.shell.clientHeight || 168;
     const ctx = this.ctx;
     const styles = getComputedStyle(document.documentElement);
-    const accent = styles.getPropertyValue('--accent').trim() || '#f59e0b';
-    const dim = styles.getPropertyValue('--bg-4').trim() || '#1b2027';
-    const line = styles.getPropertyValue('--line').trim() || '#232a33';
-    const text = styles.getPropertyValue('--text-faint').trim() || '#6b7684';
+    const accent = styles.getPropertyValue('--accent').trim() || '#f0a24b';
+    const dim = styles.getPropertyValue('--bg-4').trim() || '#232323';
+    const line = styles.getPropertyValue('--line').trim() || '#262626';
+    const text = styles.getPropertyValue('--text-faint').trim() || '#585858';
 
     ctx.clearRect(0, 0, width, height);
     const mid = height / 2;

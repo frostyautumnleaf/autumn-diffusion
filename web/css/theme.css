@@ -4,20 +4,22 @@
 :root {
   color-scheme: dark;
 
-  --bg-0: #07080a;
-  --bg-1: #0b0d11;
-  --bg-2: #101318;
-  --bg-3: #161a21;
-  --bg-4: #1d222b;
-  --bg-hover: #232935;
-  --line: #232935;
-  --line-soft: #1a1f27;
-  --line-strong: #303848;
+  /* Every surface is a shade of #0a0a0a: the ramp only changes lightness, so
+     no panel, card or control ever carries a hue of its own. */
+  --bg-0: #0a0a0a;
+  --bg-1: #101010;
+  --bg-2: #161616;
+  --bg-3: #1c1c1c;
+  --bg-4: #232323;
+  --bg-hover: #2a2a2a;
+  --line: #262626;
+  --line-soft: #1a1a1a;
+  --line-strong: #343434;
 
-  --text: #e8ebf1;
-  --text-dim: #a8b1c1;
-  --text-mute: #6f7a8c;
-  --text-faint: #4c5566;
+  --text: #f0f0f0;
+  --text-dim: #adadad;
+  --text-mute: #7a7a7a;
+  --text-faint: #585858;
 
   --accent: #f0a24b;
   --accent-soft: rgba(240, 162, 75, 0.14);
@@ -101,20 +103,20 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --bg-0: #eceef2;
-  --bg-1: #f6f7f9;
+  --bg-0: #f2f2f2;
+  --bg-1: #fafafa;
   --bg-2: #ffffff;
-  --bg-3: #f1f3f6;
-  --bg-4: #e7eaef;
-  --bg-hover: #dfe3ea;
-  --line: #d7dbe3;
-  --line-soft: #e4e7ed;
-  --line-strong: #c3c9d4;
+  --bg-3: #f5f5f5;
+  --bg-4: #ebebeb;
+  --bg-hover: #e0e0e0;
+  --line: #dcdcdc;
+  --line-soft: #e8e8e8;
+  --line-strong: #c4c4c4;
 
-  --text: #14171d;
-  --text-dim: #49515f;
-  --text-mute: #6b7484;
-  --text-faint: #98a1b0;
+  --text: #131313;
+  --text-dim: #4a4a4a;
+  --text-mute: #6f6f6f;
+  --text-faint: #9a9a9a;
 
   --shadow-sm: 0 1px 2px rgba(16, 20, 28, 0.09);
   --shadow: 0 12px 28px -14px rgba(16, 20, 28, 0.28);

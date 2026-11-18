@@ -300,7 +300,7 @@ const IMAGE_SECTIONS = [
   {
     id: 'model', label: 'Model', icon: 'box',
     hint: (ctx) => (ctx.get('checkpoint') ? baseName(ctx.get('checkpoint'))
-      : (ctx.get('unet') ? baseName(ctx.get('unet')) : 'no checkpoint')),
+      : (ctx.get('unet') ? baseName(ctx.get('unet')) : 'Pick a checkpoint')),
     fields: [
       {
         key: 'checkpoint', type: 'combo', label: 'Checkpoint', optionsCategory: 'checkpoints',

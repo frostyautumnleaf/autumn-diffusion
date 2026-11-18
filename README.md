@@ -5,7 +5,8 @@ is the backend for image and video; [YuE](https://github.com/multimodal-art-proj
 backend for music. Everything installs inside the program folder, in its own virtual environments -
 nothing is installed system-wide and nothing is written outside the folder.
 
-Dark mode by default, keyboard-friendly, and no build step on the frontend.
+Dark mode by default - a neutral grey ramp over `#0a0a0a` with amber accents - keyboard-friendly,
+and no build step on the frontend.
 
 ## Requirements
 
@@ -132,13 +133,15 @@ model download you start.
 ## Development
 
 ```bash
-PYTHONPATH=. ./.venv/bin/python -m pytest -q      # 251 tests, no GPU needed
+PYTHONPATH=. ./.venv/bin/python -m pytest -q      # 267 tests, no GPU needed
+deno check --no-lock web/js/*.js                  # type-check the frontend modules
 ./.venv/bin/python -m autumn --demo --no-setup --features all --no-browser
 ```
 
 Tests mock the ComfyUI HTTP and WebSocket surface (`tests/helpers.py`) and stub the YuE worker, so
 the graph builders, regional parser, history store, installer and settings round-trips are covered
-without a model. `--demo` runs the whole UI against a synthetic engine.
+without a model. `test_theme.py` pins the palette so backgrounds stay painted and untinted.
+`--demo` runs the whole UI against a synthetic engine.
 
 ## License
 

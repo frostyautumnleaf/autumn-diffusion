@@ -11,7 +11,7 @@ import { api } from './api.js';
 import { icon } from './icons.js';
 import { toast, menu, modal, confirmDialog, promptDialog, lightbox } from './components.js';
 import { wireUpload } from './fields.js';
-import { el, clear, bytes, dateTime, baseName, copyText, debounce, fileName } from './util.js';
+import { el, clear, bytes, dateTime, baseName, copyText, debounce, fileName, plural } from './util.js';
 
 const ROOTS = [
   { id: 'models', label: 'Models', icon: 'layers' },
@@ -204,6 +204,33 @@ export class Assets {
     this.list = el('div', { class: 'assets-list' });
     this.main.appendChild(this.list);
     this.renderList();
+    this.main.appendChild(this.renderFoot());
+  }
+
+  /** Footer: the folder on disk, what is in it, and whether it can be written. */
+  renderFoot() {
+    const files = this.listing.files || [];
+    const dirs = this.listing.dirs || [];
+    const size = this.listing.total_bytes
+      || files.reduce((sum, file) => sum + (file.size || 0), 0);
+    const path = this.listing.path || '';
+    const readOnly = this.listing.exists && this.listing.writable === false;
+    const parts = [
+      files.length || dirs.length ? `${files.length} ${plural(files.length, 'file')}` : 'empty',
+      dirs.length ? `${dirs.length} ${plural(dirs.length, 'folder')}` : '',
+      size ? bytes(size) : '',
+    ].filter(Boolean);
+    return el('div', { class: 'assets-foot' }, [
+      el('span', { class: 'mono tiny faint trunc', title: path, text: path }),
+      el('span', { class: 'grow' }),
+      el('span', { class: 'tiny faint', text: parts.join(' · ') }),
+      readOnly
+        ? el('span', {
+          class: 'tiny', style: { color: 'var(--warn)' },
+          title: 'The folder cannot be written by this process', text: 'read-only',
+        })
+        : null,
+    ]);
   }
 
   targetLabel() {

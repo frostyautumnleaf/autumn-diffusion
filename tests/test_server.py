@@ -14,7 +14,7 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
 from autumn import paths as paths_module
-from autumn.config import DEFAULTS
+from autumn.config import DEFAULTS, Settings
 from autumn.history import History
 from autumn.server import build_context, create_app
 
@@ -78,6 +78,31 @@ async def test_state_endpoint(home, settings):
     finally:
         await client.close()
         await context.close()
+
+
+async def test_model_defaults_are_seeded_once(home, settings):
+    """A fresh install has no model chosen, so the model list picks the first."""
+    from autumn.api import seed_default_models
+
+    assert settings.get("defaults.image.checkpoint") in ("", None)
+    changed = seed_default_models(settings, {
+        "checkpoints": ["first.safetensors", "second.safetensors"],
+        "diffusion_models": ["wan_video.safetensors"],
+    })
+    assert changed is True
+    assert settings.get("defaults.image.checkpoint") == "first.safetensors"
+    assert settings.get("defaults.video.model") == "wan_video.safetensors"
+
+    # A value the user cleared is not written back on the next refresh.
+    settings.set("defaults.image.checkpoint", "")
+    assert seed_default_models(settings, {"checkpoints": ["first.safetensors"]}) is False
+    assert settings.get("defaults.image.checkpoint") == ""
+
+    # An empty model list must not wipe or invent anything.
+    fresh = Settings.load(home.config_file)
+    fresh.set("defaults.image.checkpoint", "")
+    assert seed_default_models(fresh, {"checkpoints": []}) is False
+    assert fresh.get("defaults.image.checkpoint") == ""
 
 
 async def test_index_is_served(home, settings):

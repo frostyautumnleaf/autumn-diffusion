@@ -284,6 +284,8 @@ DEFAULTS: dict[str, Any] = {
         "image": _default_image(),
         "video": _default_video(),
         "music": _default_music(),
+        # Keys whose empty value was already filled from the model list once.
+        "seeded": {},
     },
     "update": {"comfyui_installed": "", "comfyui_latest": "", "checked_at": 0},
 }

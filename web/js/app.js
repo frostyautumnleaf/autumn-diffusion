@@ -673,6 +673,9 @@ class App {
       this.renderQueuePill();
       this.renderActionbar();
     });
+    // The defaults behind an empty form arrive with the settings, so a settings
+    // refresh (first load, seeding, a reset) has to redraw the note too.
+    state.on(TOPICS.settings, () => this.updateActionNote(state.ui.tab, state.activeJob()));
     state.on(TOPICS.state, () => {
       this.renderChrome();
       this.renderActionbar();
@@ -683,6 +686,13 @@ class App {
     });
     state.on(TOPICS.models, () => {
       if (this.settingsView) this.settingsView.render();
+      // Model defaults can arrive with the list, so the note has to be redrawn.
+      this.updateActionNote(state.ui.tab, state.activeJob());
+    });
+    // The action bar summary reads the form, so it has to follow form edits:
+    // without this the note kept the value it had when the tab was built.
+    state.on(TOPICS.form, (kind) => {
+      if (!kind || kind === state.ui.tab) this.updateActionNote(state.ui.tab, state.activeJob());
     });
 
     document.addEventListener('click', (event) => {
@@ -868,9 +878,16 @@ function actionNote(kind, active) {
     return value === undefined || value === null || value === '' ? fallback : value;
   };
   if (kind === 'music') {
-    return [`${read('duration', 0)}s`, read('model', 'YuE2')].join(' · ');
+    // YuE decides the track length, so there is no duration to preview here.
+    const bits = [String(read('model', 'YuE'))];
+    const format = String(read('output_format', 'flac') || '').toUpperCase();
+    if (format) bits.push(format);
+    return bits.join(' · ');
   }
-  const model = read(kind === 'video' ? 'model' : 'checkpoint', 'no model');
+  const model = read(kind === 'video' ? 'model' : 'checkpoint', '');
+  if (!model) {
+    return kind === 'video' ? 'Pick a video model to start' : 'Pick a checkpoint to start';
+  }
   const bits = [String(model), `${read('width')}x${read('height')}`, `${read('steps')} steps`];
   if (kind === 'video') bits.push(`${read('frames')}f @ ${read('fps')}fps`);
   if (Number(read('batch_size', 1)) > 1) bits.push(`x${read('batch_size')}`);

@@ -20,7 +20,7 @@ from typing import Any
 
 from aiohttp import web
 
-from .api import Api, _VERSION
+from .api import Api, seed_default_models, _VERSION
 from .assets import AssetBrowser
 from .comfy_client import ComfyClient
 from .comfy_manager import ComfyManager
@@ -230,6 +230,13 @@ def build_context(*, settings: Settings | None = None, web_mode: bool = False) -
     context.wire()
     manager.refresh_installed()
     context.refresh_features()
+    # A fresh install has no checkpoint or video model chosen, so the first paint
+    # could only say "pick a model". Fill the defaults from the model folders now
+    # (filesystem only, the engine may still be down); /api/models refines them.
+    try:
+        seed_default_models(settings, assets.models_by_category(limit=12))
+    except OSError as exc:  # pragma: no cover - unreadable model tree
+        log.debug("could not seed model defaults at startup: %s", exc)
     return context
 
 

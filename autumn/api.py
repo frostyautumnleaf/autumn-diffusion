@@ -219,6 +219,10 @@ class Api:
         for category, names in self.ctx.engine_models().items():
             if names:
                 models[category] = names
+        if seed_default_models(self.ctx.settings, models):
+            self.broadcast("settings", {
+                "settings": self.ctx.settings.as_dict(),
+                "problems": self.ctx.settings.validate()})
         samplers = []
         schedulers: list[str] = []
         node = info.get("KSampler") or {}
@@ -746,6 +750,33 @@ def _content_type(filename: str) -> str:
     }.get(suffix, "application/octet-stream")
 
 
+def seed_default_models(settings: Any, models: dict[str, list[str]]) -> bool:
+    """Point the generation defaults at real files when they are still empty.
+
+    A fresh install has no checkpoint or video model chosen, so the action bar
+    could only say "pick a model" and Generate would fail. The first entry of
+    the matching folder is used once per key: a value the user cleared later is
+    never written back, and an empty model list invents nothing.
+    """
+    marker = dict(settings.get("defaults.seeded") or {})
+    changed = False
+    for key, categories in (("defaults.image.checkpoint", ("checkpoints", "diffusion_models")),
+                            ("defaults.video.model", ("diffusion_models", "checkpoints"))):
+        if marker.get(key) or str(settings.get(key) or "").strip():
+            continue
+        for category in categories:
+            names = models.get(category) or []
+            if names and str(names[0]).strip():
+                settings.set(key, str(names[0]))
+                marker[key] = True
+                changed = True
+                break
+    if changed:
+        settings.set("defaults.seeded", marker)
+        settings.save()
+    return changed
+
+
 def _first_list(info: dict[str, Any], node: str, field: str) -> list[str]:
     spec = ((info.get(node) or {}).get("input") or {})
     for group in ("required", "optional"):
@@ -784,4 +815,4 @@ def _sample_methods(info: dict[str, Any]) -> dict[str, list[str]]:
     return methods
 
 
-__all__ = ["Api", "ok", "fail", "json_response", "read_body"]
+__all__ = ["Api", "ok", "fail", "json_response", "read_body", "seed_default_models"]
