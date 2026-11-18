@@ -1,0 +1,7278 @@
+{
+ "BasicGuider": {
+  "input": {
+   "required": {
+    "conditioning": [
+     "CONDITIONING"
+    ],
+    "model": [
+     "MODEL"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "GUIDER"
+  ],
+  "output_name": [
+   "GUIDER"
+  ]
+ },
+ "BasicScheduler": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL"
+    ],
+    "scheduler": [
+     [
+      "normal",
+      "karras",
+      "exponential",
+      "sgm_uniform",
+      "simple",
+      "ddim_uniform",
+      "beta",
+      "linear_quadratic",
+      "kl_optimal"
+     ],
+     {
+      "default": "normal"
+     }
+    ],
+    "steps": [
+     "FLOAT",
+     {
+      "default": 20,
+      "max": 10000,
+      "min": 0,
+      "step": 1
+     }
+    ]
+   },
+   "optional": {
+    "denoise": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ]
+   }
+  },
+  "output": [
+   "SIGMAS"
+  ],
+  "output_name": [
+   "SIGMAS"
+  ]
+ },
+ "CFGNorm": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL"
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 100.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {
+    "pre_cfg": [
+     "BOOLEAN",
+     {
+      "default": false
+     }
+    ]
+   }
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "CLIPAdd": {
+  "input": {
+   "required": {
+    "clip1": [
+     "CLIP"
+    ],
+    "clip2": [
+     "CLIP"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CLIP"
+  ],
+  "output_name": [
+   "CLIP"
+  ]
+ },
+ "CLIPLoader": {
+  "input": {
+   "required": {
+    "clip_name": [
+     [
+      "__ANY__"
+     ]
+    ],
+    "type": [
+     [
+      "stable_diffusion",
+      "stable_cascade",
+      "sd3",
+      "stable_audio",
+      "mochi",
+      "ltxv",
+      "pixart",
+      "cosmos",
+      "lumina2",
+      "wan",
+      "hidream",
+      "chroma",
+      "ace",
+      "omnigen2",
+      "qwen_image",
+      "hunyuan_image",
+      "flux2",
+      "ovis",
+      "longcat_image",
+      "cogvideox",
+      "lens",
+      "pixeldit",
+      "ideogram4",
+      "boogu",
+      "krea2",
+      "joyimage",
+      "mage",
+      "minimax",
+      "yue2",
+      "flux3",
+      "moss_image",
+      "fibo2",
+      "pan2"
+     ]
+    ]
+   },
+   "optional": {
+    "device": [
+     [
+      "default",
+      "cpu"
+     ],
+     {
+      "advanced": true
+     }
+    ]
+   }
+  },
+  "output": [
+   "CLIP"
+  ],
+  "output_name": [
+   "CLIP"
+  ]
+ },
+ "CLIPSetLastLayer": {
+  "input": {
+   "required": {
+    "clip": [
+     "CLIP"
+    ],
+    "stop_at_clip_layer": [
+     "INT",
+     {
+      "advanced": true,
+      "default": -1,
+      "max": -1,
+      "min": -24,
+      "step": 1
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CLIP"
+  ],
+  "output_name": [
+   "CLIP"
+  ]
+ },
+ "CLIPTextEncode": {
+  "input": {
+   "required": {
+    "clip": [
+     "CLIP",
+     {
+      "tooltip": "The CLIP model used for encoding the text."
+     }
+    ],
+    "text": [
+     "STRING",
+     {
+      "dynamicPrompts": true,
+      "multiline": true,
+      "tooltip": "The text to be encoded."
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "CLIPTextEncodeSD3": {
+  "input": {
+   "required": {
+    "clip": [
+     "CLIP"
+    ],
+    "clip_g": [
+     "STRING",
+     {
+      "dynamic_prompts": true,
+      "multiline": true
+     }
+    ],
+    "clip_l": [
+     "STRING",
+     {
+      "dynamic_prompts": true,
+      "multiline": true
+     }
+    ],
+    "empty_padding": [
+     [
+      "none",
+      "empty_prompt"
+     ],
+     {
+      "advanced": true
+     }
+    ],
+    "t5xxl": [
+     "STRING",
+     {
+      "dynamic_prompts": true,
+      "multiline": true
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "CLIPTextEncodeSDXL": {
+  "input": {
+   "required": {
+    "clip": [
+     "CLIP"
+    ],
+    "crop_h": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 0,
+      "min": 0
+     }
+    ],
+    "crop_w": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 0,
+      "min": 0
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 1024,
+      "min": 0
+     }
+    ],
+    "target_height": [
+     "INT",
+     {
+      "default": 1024,
+      "min": 0
+     }
+    ],
+    "target_width": [
+     "INT",
+     {
+      "default": 1024,
+      "min": 0
+     }
+    ],
+    "text_g": [
+     "STRING",
+     {
+      "dynamic_prompts": true,
+      "multiline": true
+     }
+    ],
+    "text_l": [
+     "STRING",
+     {
+      "dynamic_prompts": true,
+      "multiline": true
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 1024,
+      "min": 0
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "CLIPVisionLoader": {
+  "input": {
+   "required": {
+    "clip_name": [
+     [
+      "__ANY__"
+     ]
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CLIP_VISION"
+  ],
+  "output_name": [
+   "CLIP_VISION"
+  ]
+ },
+ "CheckpointLoader": {
+  "input": {
+   "required": {
+    "ckpt_name": [
+     [
+      "__ANY__"
+     ]
+    ],
+    "config_name": [
+     [
+      "__ANY__"
+     ]
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL",
+   "CLIP",
+   "VAE"
+  ],
+  "output_name": [
+   "MODEL",
+   "CLIP",
+   "VAE"
+  ]
+ },
+ "CheckpointLoaderSimple": {
+  "input": {
+   "required": {
+    "ckpt_name": [
+     [
+      "__ANY__"
+     ],
+     {
+      "tooltip": "The name of the checkpoint (model) to load."
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL",
+   "CLIP",
+   "VAE"
+  ],
+  "output_name": [
+   "MODEL",
+   "CLIP",
+   "VAE"
+  ]
+ },
+ "ConditioningAverage": {
+  "input": {
+   "required": {
+    "conditioning_from": [
+     "CONDITIONING"
+    ],
+    "conditioning_to": [
+     "CONDITIONING"
+    ],
+    "conditioning_to_strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "ConditioningCombine": {
+  "input": {
+   "required": {
+    "conditioning_1": [
+     "CONDITIONING"
+    ],
+    "conditioning_2": [
+     "CONDITIONING"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "ConditioningConcat": {
+  "input": {
+   "required": {
+    "conditioning_from": [
+     "CONDITIONING"
+    ],
+    "conditioning_to": [
+     "CONDITIONING"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "ConditioningMultiply": {
+  "input": {
+   "required": {
+    "conditioning": [
+     "CONDITIONING"
+    ],
+    "multiplier": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 100.0,
+      "min": -100.0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "ConditioningSetArea": {
+  "input": {
+   "required": {
+    "conditioning": [
+     "CONDITIONING"
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 64,
+      "max": 16384,
+      "min": 64,
+      "step": 8
+     }
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 10.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 64,
+      "max": 16384,
+      "min": 64,
+      "step": 8
+     }
+    ],
+    "x": [
+     "INT",
+     {
+      "default": 0,
+      "max": 16384,
+      "min": 0,
+      "step": 8
+     }
+    ],
+    "y": [
+     "INT",
+     {
+      "default": 0,
+      "max": 16384,
+      "min": 0,
+      "step": 8
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "ConditioningSetAreaPercentage": {
+  "input": {
+   "required": {
+    "conditioning": [
+     "CONDITIONING"
+    ],
+    "height": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0,
+      "step": 0.01
+     }
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 10.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "width": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0,
+      "step": 0.01
+     }
+    ],
+    "x": [
+     "FLOAT",
+     {
+      "default": 0,
+      "max": 1.0,
+      "min": 0,
+      "step": 0.01
+     }
+    ],
+    "y": [
+     "FLOAT",
+     {
+      "default": 0,
+      "max": 1.0,
+      "min": 0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "ConditioningSetAreaPercentageVideo": {
+  "input": {
+   "required": {
+    "conditioning": [
+     "CONDITIONING"
+    ],
+    "height": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0,
+      "step": 0.01
+     }
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 10.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "temporal": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0,
+      "step": 0.01
+     }
+    ],
+    "width": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0,
+      "step": 0.01
+     }
+    ],
+    "x": [
+     "FLOAT",
+     {
+      "default": 0,
+      "max": 1.0,
+      "min": 0,
+      "step": 0.01
+     }
+    ],
+    "y": [
+     "FLOAT",
+     {
+      "default": 0,
+      "max": 1.0,
+      "min": 0,
+      "step": 0.01
+     }
+    ],
+    "z": [
+     "FLOAT",
+     {
+      "default": 0,
+      "max": 1.0,
+      "min": 0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "ConditioningSetAreaStrength": {
+  "input": {
+   "required": {
+    "conditioning": [
+     "CONDITIONING"
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 10.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "ConditioningSetDefaultAndCombine": {
+  "input": {
+   "required": {
+    "cond": [
+     "CONDITIONING"
+    ],
+    "cond_DEFAULT": [
+     "CONDITIONING"
+    ]
+   },
+   "optional": {
+    "hooks": [
+     "HOOKS"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "ConditioningSetMask": {
+  "input": {
+   "required": {
+    "conditioning": [
+     "CONDITIONING"
+    ],
+    "mask": [
+     "MASK"
+    ],
+    "set_cond_area": [
+     [
+      "default",
+      "mask bounds"
+     ]
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 10.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "ConditioningSetProperties": {
+  "input": {
+   "required": {
+    "cond_NEW": [
+     "CONDITIONING"
+    ],
+    "set_cond_area": [
+     [
+      "default",
+      "mask bounds"
+     ]
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 10.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {
+    "hooks": [
+     "HOOKS"
+    ],
+    "mask": [
+     "MASK"
+    ],
+    "timesteps": [
+     "TIMESTEPS_RANGE"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "ConditioningSetPropertiesAndCombine": {
+  "input": {
+   "required": {
+    "cond": [
+     "CONDITIONING"
+    ],
+    "cond_NEW": [
+     "CONDITIONING"
+    ],
+    "set_cond_area": [
+     [
+      "default",
+      "mask bounds"
+     ]
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 10.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {
+    "hooks": [
+     "HOOKS"
+    ],
+    "mask": [
+     "MASK"
+    ],
+    "timesteps": [
+     "TIMESTEPS_RANGE"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "ConditioningSetTimestepRange": {
+  "input": {
+   "required": {
+    "conditioning": [
+     "CONDITIONING"
+    ],
+    "end": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ],
+    "start": [
+     "FLOAT",
+     {
+      "default": 0.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "ConditioningZeroOut": {
+  "input": {
+   "required": {
+    "conditioning": [
+     "CONDITIONING"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "ControlNetApply": {
+  "input": {
+   "required": {
+    "conditioning": [
+     "CONDITIONING"
+    ],
+    "control_net": [
+     "CONTROL_NET"
+    ],
+    "image": [
+     "IMAGE"
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 10.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "ControlNetApplyAdvanced": {
+  "input": {
+   "required": {
+    "positive": [
+     "CONDITIONING"
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "control_net": [
+     "CONTROL_NET"
+    ],
+    "image": [
+     "IMAGE"
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 10.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "start_percent": [
+     "FLOAT",
+     {
+      "default": 0.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ],
+    "end_percent": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ]
+   },
+   "optional": {
+    "vae": [
+     "VAE"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING"
+  ]
+ },
+ "ControlNetApplySD3": {
+  "input": {
+   "required": {
+    "control_net": [
+     "CONTROL_NET"
+    ],
+    "end_percent": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ],
+    "image": [
+     "IMAGE"
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "start_percent": [
+     "FLOAT",
+     {
+      "default": 0.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 10.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "vae": [
+     "VAE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING"
+  ]
+ },
+ "ControlNetLoader": {
+  "input": {
+   "required": {
+    "control_net_name": [
+     [
+      "__ANY__"
+     ]
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONTROL_NET"
+  ],
+  "output_name": [
+   "CONTROL_NET"
+  ]
+ },
+ "CreateVideo": {
+  "input": {
+   "required": {
+    "fps": [
+     "FLOAT",
+     {
+      "default": 30.0,
+      "max": 120.0,
+      "min": 1.0,
+      "step": 1.0
+     }
+    ],
+    "images": [
+     "IMAGE"
+    ]
+   },
+   "optional": {
+    "audio": [
+     "AUDIO"
+    ],
+    "bit_depth": [
+     [
+      "auto",
+      "8",
+      "10"
+     ],
+     {
+      "default": "auto"
+     }
+    ],
+    "chroma_subsampling": [
+     [
+      "auto",
+      "444",
+      "422",
+      "420",
+      "none"
+     ],
+     {
+      "default": "auto"
+     }
+    ],
+    "codec": [
+     [
+      "none",
+      "auto",
+      "h264",
+      "av1",
+      "prores"
+     ],
+     {
+      "default": "none"
+     }
+    ],
+    "color_space": [
+     [
+      "sRGB",
+      "HDR",
+      "HDR PQ"
+     ],
+     {
+      "default": "sRGB"
+     }
+    ]
+   }
+  },
+  "output": [
+   "VIDEO"
+  ],
+  "output_name": [
+   "VIDEO"
+  ]
+ },
+ "CropMask": {
+  "input": {
+   "required": {
+    "height": [
+     "INT",
+     {
+      "default": 512,
+      "min": 1,
+      "step": 1
+     }
+    ],
+    "mask": [
+     "MASK"
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 512,
+      "min": 1,
+      "step": 1
+     }
+    ],
+    "x": [
+     "INT",
+     {
+      "default": 0,
+      "min": 0,
+      "step": 1
+     }
+    ],
+    "y": [
+     "INT",
+     {
+      "default": 0,
+      "min": 0,
+      "step": 1
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MASK"
+  ],
+  "output_name": [
+   "MASK"
+  ]
+ },
+ "DiffControlNetLoader": {
+  "input": {
+   "required": {
+    "control_net_name": [
+     [
+      "__ANY__"
+     ]
+    ],
+    "model": [
+     "MODEL"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONTROL_NET"
+  ],
+  "output_name": [
+   "CONTROL_NET"
+  ]
+ },
+ "DualCLIPLoader": {
+  "input": {
+   "required": {
+    "clip_name1": [
+     [
+      "__ANY__"
+     ]
+    ],
+    "clip_name2": [
+     [
+      "__ANY__"
+     ]
+    ],
+    "type": [
+     [
+      "sdxl",
+      "sd3",
+      "flux",
+      "hunyuan_video",
+      "hidream",
+      "hunyuan_image",
+      "hunyuan_video_15",
+      "kandinsky5",
+      "kandinsky5_image",
+      "ltxv",
+      "newbie",
+      "ace"
+     ]
+    ]
+   },
+   "optional": {
+    "device": [
+     [
+      "default",
+      "cpu"
+     ],
+     {
+      "advanced": true
+     }
+    ]
+   }
+  },
+  "output": [
+   "CLIP"
+  ],
+  "output_name": [
+   "CLIP"
+  ]
+ },
+ "EmptyARVideoLatent": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 64,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 480,
+      "max": 8192,
+      "min": 16,
+      "step": 16
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 81,
+      "max": 1024,
+      "min": 1,
+      "step": 4
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 832,
+      "max": 8192,
+      "min": 16,
+      "step": 16
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "EmptyAudio": {
+  "input": {
+   "required": {
+    "channels": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 2,
+      "max": 2,
+      "min": 1
+     }
+    ],
+    "duration": [
+     "FLOAT",
+     {
+      "default": 60.0,
+      "max": 18446744073709551615,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "sample_rate": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 44100,
+      "max": 192000,
+      "min": 1
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "AUDIO"
+  ],
+  "output_name": [
+   "AUDIO"
+  ]
+ },
+ "EmptyCosmosLatentVideo": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 704,
+      "min": 16,
+      "step": 16
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 121,
+      "min": 1,
+      "step": 8
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 1280,
+      "min": 16,
+      "step": 16
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "EmptyFlux2LatentImage": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 1024,
+      "min": 16,
+      "step": 16
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 1024,
+      "min": 16,
+      "step": 16
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "EmptyHunyuanImageLatent": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 2048,
+      "min": 64,
+      "step": 32
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 2048,
+      "min": 64,
+      "step": 32
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "EmptyHunyuanLatentVideo": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 480,
+      "min": 16,
+      "step": 16
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 25,
+      "min": 1,
+      "step": 4
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 848,
+      "min": 16,
+      "step": 16
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "EmptyHunyuanVideo15Latent": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 64,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 320,
+      "max": 4096,
+      "min": 16,
+      "step": 16
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 121,
+      "max": 4096,
+      "min": 1,
+      "step": 4
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 512,
+      "max": 4096,
+      "min": 16,
+      "step": 16
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "EmptyImage": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "color": [
+     "INT",
+     {
+      "default": 0,
+      "display": "color",
+      "max": 16777215,
+      "min": 0,
+      "step": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 512,
+      "max": 16384,
+      "min": 1,
+      "step": 1
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 512,
+      "max": 16384,
+      "min": 1,
+      "step": 1
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "EmptyLTXVLatentVideo": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 512,
+      "min": 64,
+      "step": 32
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 97,
+      "min": 1,
+      "step": 8
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 768,
+      "min": 64,
+      "step": 32
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "EmptyLatentAudio": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "seconds": [
+     "FLOAT",
+     {
+      "default": 47.6,
+      "max": 1000.0,
+      "min": 1.0,
+      "step": 0.1
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "EmptyLatentImage": {
+  "input": {
+   "required": {
+    "width": [
+     "INT",
+     {
+      "default": 1024,
+      "max": 16384,
+      "min": 16,
+      "step": 8,
+      "tooltip": "The width of the latent images in pixels."
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 1024,
+      "max": 16384,
+      "min": 16,
+      "step": 8,
+      "tooltip": "The height of the latent images in pixels."
+     }
+    ],
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1,
+      "tooltip": "The number of latent images in the batch."
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "EmptyMiniMaxH3LatentAV": {
+  "input": {
+   "required": {
+    "height": [
+     "INT",
+     {
+      "default": 768,
+      "min": 32,
+      "step": 32
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 124,
+      "max": 3600,
+      "min": 5,
+      "step": 17
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 1344,
+      "min": 32,
+      "step": 32
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "EmptyMochiLatentVideo": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 480,
+      "min": 16,
+      "step": 16
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 25,
+      "min": 7,
+      "step": 6
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 848,
+      "min": 16,
+      "step": 16
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "EmptySD3LatentImage": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 1024,
+      "min": 16,
+      "step": 16
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 1024,
+      "min": 16,
+      "step": 16
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "FeatherMask": {
+  "input": {
+   "required": {
+    "bottom": [
+     "INT",
+     {
+      "default": 0,
+      "min": 0,
+      "step": 1
+     }
+    ],
+    "left": [
+     "INT",
+     {
+      "default": 0,
+      "min": 0,
+      "step": 1
+     }
+    ],
+    "mask": [
+     "MASK"
+    ],
+    "right": [
+     "INT",
+     {
+      "default": 0,
+      "min": 0,
+      "step": 1
+     }
+    ],
+    "top": [
+     "INT",
+     {
+      "default": 0,
+      "min": 0,
+      "step": 1
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MASK"
+  ],
+  "output_name": [
+   "MASK"
+  ]
+ },
+ "FrameInterpolate": {
+  "input": {
+   "required": {
+    "images": [
+     "IMAGE"
+    ],
+    "interp_model": [
+     "INTERP_MODEL"
+    ],
+    "multiplier": [
+     "INT",
+     {
+      "default": 2,
+      "max": 16,
+      "min": 2
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "FrameInterpolationModelLoader": {
+  "input": {
+   "required": {
+    "model_name": [
+     [
+      "__ANY__"
+     ]
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "INTERP_MODEL"
+  ],
+  "output_name": [
+   "INTERP_MODEL"
+  ]
+ },
+ "GLIGENLoader": {
+  "input": {
+   "required": {
+    "gligen_name": [
+     [
+      "__ANY__"
+     ]
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "GLIGEN"
+  ],
+  "output_name": [
+   "GLIGEN"
+  ]
+ },
+ "GLIGENTextBoxApply": {
+  "input": {
+   "required": {
+    "clip": [
+     "CLIP"
+    ],
+    "conditioning_to": [
+     "CONDITIONING"
+    ],
+    "gligen_textbox_model": [
+     "GLIGEN"
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 64,
+      "max": 16384,
+      "min": 8,
+      "step": 8
+     }
+    ],
+    "text": [
+     "STRING",
+     {
+      "dynamicPrompts": true,
+      "multiline": true
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 64,
+      "max": 16384,
+      "min": 8,
+      "step": 8
+     }
+    ],
+    "x": [
+     "INT",
+     {
+      "default": 0,
+      "max": 16384,
+      "min": 0,
+      "step": 8
+     }
+    ],
+    "y": [
+     "INT",
+     {
+      "default": 0,
+      "max": 16384,
+      "min": 0,
+      "step": 8
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "GetPreviewOverrideFramesKJ": {
+  "input": {
+   "required": {
+    "after_sample": [
+     "*"
+    ],
+    "model": [
+     "MODEL"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "GetVideoComponents": {
+  "input": {
+   "required": {
+    "video": [
+     "VIDEO"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE",
+   "AUDIO",
+   "FLOAT",
+   "COMBO",
+   "COMBO"
+  ],
+  "output_name": [
+   "IMAGE",
+   "AUDIO",
+   "FLOAT",
+   "COMBO",
+   "COMBO"
+  ]
+ },
+ "GrowMask": {
+  "input": {
+   "required": {
+    "expand": [
+     "INT",
+     {
+      "default": 0,
+      "max": 180,
+      "min": -180
+     }
+    ],
+    "mask": [
+     "MASK"
+    ]
+   },
+   "optional": {
+    "tapered_corners": [
+     "BOOLEAN",
+     {
+      "default": true
+     }
+    ]
+   }
+  },
+  "output": [
+   "MASK"
+  ],
+  "output_name": [
+   "MASK"
+  ]
+ },
+ "HunyuanImageToVideo": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "guidance_type": [
+     [
+      "v1 (concat)",
+      "v2 (replace)",
+      "custom"
+     ],
+     {
+      "advanced": true
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 480,
+      "min": 16,
+      "step": 16
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 53,
+      "min": 1,
+      "step": 4
+     }
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "vae": [
+     "VAE"
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 848,
+      "min": 16,
+      "step": 16
+     }
+    ]
+   },
+   "optional": {
+    "start_image": [
+     "IMAGE"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "HunyuanRefinerLatent": {
+  "input": {
+   "required": {
+    "latent": [
+     "LATENT"
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "noise_augmentation": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 0.1,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "positive": [
+     "CONDITIONING"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "HunyuanVideo15ImageToVideo": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 480,
+      "min": 16,
+      "step": 16
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 33,
+      "min": 1,
+      "step": 4
+     }
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "vae": [
+     "VAE"
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 848,
+      "min": 16,
+      "step": 16
+     }
+    ]
+   },
+   "optional": {
+    "clip_vision_output": [
+     "CLIP_VISION_OUTPUT"
+    ],
+    "start_image": [
+     "IMAGE"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "HunyuanVideo15LatentUpscaleWithModel": {
+  "input": {
+   "required": {
+    "crop": [
+     [
+      "disabled",
+      "center"
+     ],
+     {
+      "default": "disabled"
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 720,
+      "max": 16384,
+      "min": 0,
+      "step": 8
+     }
+    ],
+    "model": [
+     "LATENTUPSCALEMODEL"
+    ],
+    "samples": [
+     "LATENT"
+    ],
+    "upscale_method": [
+     [
+      "nearest-exact",
+      "bilinear",
+      "area",
+      "bicubic",
+      "bislerp"
+     ],
+     {
+      "default": "bilinear"
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 1280,
+      "max": 16384,
+      "min": 0,
+      "step": 8
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "ImageAddNoise": {
+  "input": {
+   "required": {
+    "image": [
+     "IMAGE"
+    ],
+    "seed": [
+     "INT",
+     {
+      "control_after_generate": true,
+      "default": 0,
+      "max": 18446744073709551615,
+      "min": 0
+     }
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 0.5,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "ImageBatch": {
+  "input": {
+   "required": {
+    "image1": [
+     "IMAGE"
+    ],
+    "image2": [
+     "IMAGE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "ImageColorToMask": {
+  "input": {
+   "required": {
+    "color": [
+     "INT",
+     {
+      "default": 0,
+      "max": 16777215,
+      "min": 0,
+      "step": 1
+     }
+    ],
+    "image": [
+     "IMAGE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MASK"
+  ],
+  "output_name": [
+   "MASK"
+  ]
+ },
+ "ImageCrop": {
+  "input": {
+   "required": {
+    "height": [
+     "INT",
+     {
+      "default": 512,
+      "min": 1,
+      "step": 1
+     }
+    ],
+    "image": [
+     "IMAGE"
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 512,
+      "min": 1,
+      "step": 1
+     }
+    ],
+    "x": [
+     "INT",
+     {
+      "default": 0,
+      "min": 0,
+      "step": 1
+     }
+    ],
+    "y": [
+     "INT",
+     {
+      "default": 0,
+      "min": 0,
+      "step": 1
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "ImageFromBatch": {
+  "input": {
+   "required": {
+    "batch_index": [
+     "INT",
+     {
+      "default": 0,
+      "max": 16384,
+      "min": -16384
+     }
+    ],
+    "image": [
+     "IMAGE"
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "ImageInvert": {
+  "input": {
+   "required": {
+    "image": [
+     "IMAGE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "ImageOnlyCheckpointLoader": {
+  "input": {
+   "required": {
+    "ckpt_name": [
+     [
+      "__ANY__"
+     ]
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL",
+   "CLIP_VISION",
+   "VAE"
+  ],
+  "output_name": [
+   "MODEL",
+   "CLIP_VISION",
+   "VAE"
+  ]
+ },
+ "ImagePadForOutpaint": {
+  "input": {
+   "required": {
+    "bottom": [
+     "INT",
+     {
+      "default": 0,
+      "max": 16384,
+      "min": 0,
+      "step": 8
+     }
+    ],
+    "feathering": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 40,
+      "max": 16384,
+      "min": 0,
+      "step": 1
+     }
+    ],
+    "image": [
+     "IMAGE"
+    ],
+    "left": [
+     "INT",
+     {
+      "default": 0,
+      "max": 16384,
+      "min": 0,
+      "step": 8
+     }
+    ],
+    "right": [
+     "INT",
+     {
+      "default": 0,
+      "max": 16384,
+      "min": 0,
+      "step": 8
+     }
+    ],
+    "top": [
+     "INT",
+     {
+      "default": 0,
+      "max": 16384,
+      "min": 0,
+      "step": 8
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE",
+   "MASK"
+  ],
+  "output_name": [
+   "IMAGE",
+   "MASK"
+  ]
+ },
+ "ImageScale": {
+  "input": {
+   "required": {
+    "crop": [
+     [
+      "disabled",
+      "center"
+     ]
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 512,
+      "max": 16384,
+      "min": 0,
+      "step": 1
+     }
+    ],
+    "image": [
+     "IMAGE"
+    ],
+    "upscale_method": [
+     [
+      "nearest-exact",
+      "bilinear",
+      "area",
+      "bicubic",
+      "lanczos"
+     ]
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 512,
+      "max": 16384,
+      "min": 0,
+      "step": 1
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "ImageScaleBy": {
+  "input": {
+   "required": {
+    "image": [
+     "IMAGE"
+    ],
+    "scale_by": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 8.0,
+      "min": 0.01,
+      "step": 0.01
+     }
+    ],
+    "upscale_method": [
+     [
+      "nearest-exact",
+      "bilinear",
+      "area",
+      "bicubic",
+      "lanczos"
+     ]
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "ImageScaleToTotalPixels": {
+  "input": {
+   "required": {
+    "image": [
+     "IMAGE"
+    ],
+    "megapixels": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 16.0,
+      "min": 0.01,
+      "step": 0.01
+     }
+    ],
+    "resolution_steps": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 1,
+      "max": 256,
+      "min": 1
+     }
+    ],
+    "upscale_method": [
+     [
+      "nearest-exact",
+      "bilinear",
+      "area",
+      "bicubic",
+      "lanczos"
+     ],
+     {
+      "default": "nearest-exact"
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "ImageStitch": {
+  "input": {
+   "required": {
+    "direction": [
+     [
+      "right",
+      "down",
+      "left",
+      "up"
+     ],
+     {
+      "default": "right"
+     }
+    ],
+    "image1": [
+     "IMAGE"
+    ],
+    "match_image_size": [
+     "BOOLEAN",
+     {
+      "default": true
+     }
+    ],
+    "spacing_color": [
+     [
+      "white",
+      "black",
+      "red",
+      "green",
+      "blue"
+     ],
+     {
+      "advanced": true,
+      "default": "white"
+     }
+    ],
+    "spacing_width": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 0,
+      "max": 1024,
+      "min": 0,
+      "step": 2
+     }
+    ]
+   },
+   "optional": {
+    "image2": [
+     "IMAGE"
+    ]
+   }
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "ImageToMask": {
+  "input": {
+   "required": {
+    "channel": [
+     [
+      "red",
+      "green",
+      "blue",
+      "alpha"
+     ],
+     {
+      "default": "red"
+     }
+    ],
+    "image": [
+     "IMAGE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MASK"
+  ],
+  "output_name": [
+   "MASK"
+  ]
+ },
+ "ImageUpscaleWithModel": {
+  "input": {
+   "required": {
+    "upscale_model": [
+     "UPSCALE_MODEL"
+    ],
+    "image": [
+     "IMAGE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "InpaintModelConditioning": {
+  "input": {
+   "required": {
+    "mask": [
+     "MASK"
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "noise_mask": [
+     "BOOLEAN",
+     {
+      "default": true,
+      "tooltip": "Add a noise mask to the latent so sampling will only happen within the mask. Might improve results or completely break things depending on the model."
+     }
+    ],
+    "pixels": [
+     "IMAGE"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "vae": [
+     "VAE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "InvertMask": {
+  "input": {
+   "required": {
+    "mask": [
+     "MASK"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MASK"
+  ],
+  "output_name": [
+   "MASK"
+  ]
+ },
+ "KSampler": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL",
+     {
+      "tooltip": "The model used for denoising the input latent."
+     }
+    ],
+    "seed": [
+     "INT",
+     {
+      "control_after_generate": true,
+      "default": 0,
+      "max": 18446744073709551615,
+      "min": 0,
+      "tooltip": "The random seed used for creating the noise."
+     }
+    ],
+    "steps": [
+     "INT",
+     {
+      "default": 20,
+      "max": 10000,
+      "min": 1,
+      "tooltip": "The number of steps used in the denoising process."
+     }
+    ],
+    "cfg": [
+     "FLOAT",
+     {
+      "default": 8.0,
+      "max": 100.0,
+      "min": 0.0,
+      "round": 0.01,
+      "step": 0.1,
+      "tooltip": "The Classifier-Free Guidance scale balances creativity and adherence to the prompt. Higher values result in images more closely matching the prompt however too high values will negatively impact quality."
+     }
+    ],
+    "sampler_name": [
+     [
+      "euler",
+      "euler_cfg_pp",
+      "euler_ancestral",
+      "euler_ancestral_cfg_pp",
+      "heun",
+      "heunpp2",
+      "exp_heun_2_x0",
+      "exp_heun_2_x0_sde",
+      "dpm_2",
+      "dpm_2_ancestral",
+      "lms",
+      "dpm_fast",
+      "dpm_adaptive",
+      "dpmpp_2s_ancestral",
+      "dpmpp_2s_ancestral_cfg_pp",
+      "dpmpp_sde",
+      "dpmpp_sde_gpu",
+      "dpmpp_2m",
+      "dpmpp_2m_cfg_pp",
+      "dpmpp_2m_sde",
+      "dpmpp_2m_sde_gpu",
+      "dpmpp_2m_sde_heun",
+      "dpmpp_2m_sde_heun_gpu",
+      "dpmpp_3m_sde",
+      "dpmpp_3m_sde_gpu",
+      "ddpm",
+      "lcm",
+      "ipndm",
+      "ipndm_v",
+      "deis",
+      "cfgpp_ud10_ab",
+      "res_multistep",
+      "res_multistep_cfg_pp",
+      "res_multistep_ancestral",
+      "res_multistep_ancestral_cfg_pp",
+      "gradient_estimation",
+      "gradient_estimation_cfg_pp",
+      "er_sde",
+      "seeds_2",
+      "seeds_3",
+      "sa_solver",
+      "sa_solver_pece",
+      "ddim",
+      "uni_pc",
+      "uni_pc_bh2"
+     ],
+     {
+      "tooltip": "The algorithm used when sampling, this can affect the quality, speed, and style of the generated output."
+     }
+    ],
+    "scheduler": [
+     [
+      "simple",
+      "sgm_uniform",
+      "karras",
+      "exponential",
+      "ddim_uniform",
+      "beta",
+      "normal",
+      "linear_quadratic",
+      "kl_optimal"
+     ],
+     {
+      "tooltip": "The scheduler controls how noise is gradually removed to form the image."
+     }
+    ],
+    "denoise": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.01,
+      "tooltip": "The amount of denoising applied, lower values will maintain the structure of the initial image allowing for image to image sampling."
+     }
+    ],
+    "positive": [
+     "CONDITIONING",
+     {
+      "tooltip": "The conditioning describing the attributes you want to include in the image."
+     }
+    ],
+    "negative": [
+     "CONDITIONING",
+     {
+      "tooltip": "The conditioning describing the attributes you want to exclude from the image."
+     }
+    ],
+    "latent_image": [
+     "LATENT",
+     {
+      "tooltip": "The latent image to denoise."
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "KSamplerAdvanced": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL"
+    ],
+    "add_noise": [
+     [
+      "enable",
+      "disable"
+     ],
+     {
+      "advanced": true
+     }
+    ],
+    "noise_seed": [
+     "INT",
+     {
+      "control_after_generate": true,
+      "default": 0,
+      "max": 18446744073709551615,
+      "min": 0
+     }
+    ],
+    "steps": [
+     "INT",
+     {
+      "default": 20,
+      "max": 10000,
+      "min": 1
+     }
+    ],
+    "cfg": [
+     "FLOAT",
+     {
+      "default": 8.0,
+      "max": 100.0,
+      "min": 0.0,
+      "round": 0.01,
+      "step": 0.1
+     }
+    ],
+    "sampler_name": [
+     [
+      "euler",
+      "euler_cfg_pp",
+      "euler_ancestral",
+      "euler_ancestral_cfg_pp",
+      "heun",
+      "heunpp2",
+      "exp_heun_2_x0",
+      "exp_heun_2_x0_sde",
+      "dpm_2",
+      "dpm_2_ancestral",
+      "lms",
+      "dpm_fast",
+      "dpm_adaptive",
+      "dpmpp_2s_ancestral",
+      "dpmpp_2s_ancestral_cfg_pp",
+      "dpmpp_sde",
+      "dpmpp_sde_gpu",
+      "dpmpp_2m",
+      "dpmpp_2m_cfg_pp",
+      "dpmpp_2m_sde",
+      "dpmpp_2m_sde_gpu",
+      "dpmpp_2m_sde_heun",
+      "dpmpp_2m_sde_heun_gpu",
+      "dpmpp_3m_sde",
+      "dpmpp_3m_sde_gpu",
+      "ddpm",
+      "lcm",
+      "ipndm",
+      "ipndm_v",
+      "deis",
+      "cfgpp_ud10_ab",
+      "res_multistep",
+      "res_multistep_cfg_pp",
+      "res_multistep_ancestral",
+      "res_multistep_ancestral_cfg_pp",
+      "gradient_estimation",
+      "gradient_estimation_cfg_pp",
+      "er_sde",
+      "seeds_2",
+      "seeds_3",
+      "sa_solver",
+      "sa_solver_pece",
+      "ddim",
+      "uni_pc",
+      "uni_pc_bh2"
+     ]
+    ],
+    "scheduler": [
+     [
+      "simple",
+      "sgm_uniform",
+      "karras",
+      "exponential",
+      "ddim_uniform",
+      "beta",
+      "normal",
+      "linear_quadratic",
+      "kl_optimal"
+     ]
+    ],
+    "start_at_step": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 0,
+      "max": 10000,
+      "min": 0
+     }
+    ],
+    "end_at_step": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 10000,
+      "max": 10000,
+      "min": 0
+     }
+    ],
+    "return_with_leftover_noise": [
+     [
+      "disable",
+      "enable"
+     ],
+     {
+      "advanced": true
+     }
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "latent_image": [
+     "LATENT"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "KSamplerSelect": {
+  "input": {
+   "required": {
+    "sampler_name": [
+     [
+      "euler",
+      "euler_ancestral",
+      "dpmpp_2m",
+      "dpmpp_2m_sde",
+      "dpmpp_2m_sde_gpu",
+      "dpmpp_3m_sde",
+      "dpm_fast",
+      "lms",
+      "heun",
+      "ddim",
+      "uni_pc",
+      "uni_pc_bh2"
+     ],
+     {
+      "default": "euler"
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "SAMPLER"
+  ],
+  "output_name": [
+   "SAMPLER"
+  ]
+ },
+ "LTXVAddGuide": {
+  "input": {
+   "required": {
+    "frame_idx": [
+     "INT",
+     {
+      "default": 0,
+      "max": 599,
+      "min": -599
+     }
+    ],
+    "image": [
+     "IMAGE"
+    ],
+    "latent": [
+     "LATENT"
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 10.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "vae": [
+     "VAE"
+    ]
+   },
+   "optional": {
+    "crop": [
+     [
+      "center",
+      "none"
+     ],
+     {
+      "default": "center"
+     }
+    ],
+    "ic_lora_params": [
+     "ICLORA_PARAMETERS"
+    ],
+    "mask": [
+     "MASK"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "LTXVAddLatentGuide": {
+  "input": {
+   "required": {
+    "guiding_latent": [
+     "LATENT"
+    ],
+    "latent": [
+     "LATENT"
+    ],
+    "latent_idx": [
+     "INT",
+     {
+      "default": 0,
+      "max": 9999,
+      "min": -9999
+     }
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "vae": [
+     "VAE"
+    ]
+   },
+   "optional": {
+    "attention_mask": [
+     "MASK"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "LTXVAudioVAEDecode": {
+  "input": {
+   "required": {
+    "samples": [
+     "LATENT"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "AUDIO"
+  ],
+  "output_name": [
+   "AUDIO"
+  ]
+ },
+ "LTXVAudioVAEEncode": {
+  "input": {
+   "required": {
+    "audio": [
+     "AUDIO"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "LTXVAudioVAELoader": {
+  "input": {
+   "required": {
+    "ckpt_name": [
+     [
+      "__ANY__"
+     ],
+     {
+      "default": "__ANY__"
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "VAE"
+  ],
+  "output_name": [
+   "VAE"
+  ]
+ },
+ "LTXVConcatAVLatent": {
+  "input": {
+   "required": {
+    "audio_latent": [
+     "LATENT"
+    ],
+    "video_latent": [
+     "LATENT"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "LTXVConditioning": {
+  "input": {
+   "required": {
+    "frame_rate": [
+     "FLOAT",
+     {
+      "default": 25.0,
+      "max": 1000.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING"
+  ]
+ },
+ "LTXVCropGuides": {
+  "input": {
+   "required": {
+    "latent": [
+     "LATENT"
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "LTXVImgToVideo": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 512,
+      "min": 64,
+      "step": 32
+     }
+    ],
+    "image": [
+     "IMAGE"
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 97,
+      "min": 9,
+      "step": 8
+     }
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0
+     }
+    ],
+    "vae": [
+     "VAE"
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 768,
+      "min": 64,
+      "step": 32
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "LTXVImgToVideoInplace": {
+  "input": {
+   "required": {
+    "bypass": [
+     "BOOLEAN",
+     {
+      "default": false
+     }
+    ],
+    "image": [
+     "IMAGE"
+    ],
+    "latent": [
+     "LATENT"
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0
+     }
+    ],
+    "vae": [
+     "VAE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "LTXVPreprocess": {
+  "input": {
+   "required": {
+    "image": [
+     "IMAGE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "LTXVReferenceAudio": {
+  "input": {
+   "required": {
+    "end_percent": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ],
+    "identity_guidance_scale": [
+     "FLOAT",
+     {
+      "default": 3.0,
+      "max": 100.0,
+      "min": 0.0,
+      "round": 0.01,
+      "step": 0.01
+     }
+    ],
+    "model": [
+     "MODEL"
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "reference_audio": [
+     "AUDIO"
+    ],
+    "start_percent": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 0.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL",
+   "CONDITIONING",
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "MODEL",
+   "CONDITIONING",
+   "CONDITIONING"
+  ]
+ },
+ "LTXVScheduler": {
+  "input": {
+   "required": {
+    "base_shift": [
+     "FLOAT",
+     {
+      "default": 0.95,
+      "max": 100.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "max_shift": [
+     "FLOAT",
+     {
+      "default": 2.05,
+      "max": 100.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "steps": [
+     "INT",
+     {
+      "default": 20,
+      "max": 10000,
+      "min": 1
+     }
+    ]
+   },
+   "optional": {
+    "latent": [
+     "LATENT"
+    ]
+   }
+  },
+  "output": [
+   "SIGMAS"
+  ],
+  "output_name": [
+   "SIGMAS"
+  ]
+ },
+ "LTXVSeparateAVLatent": {
+  "input": {
+   "required": {
+    "av_latent": [
+     "LATENT"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT",
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT",
+   "LATENT"
+  ]
+ },
+ "LatentComposite": {
+  "input": {
+   "required": {
+    "feather": [
+     "INT",
+     {
+      "default": 0,
+      "max": 16384,
+      "min": 0,
+      "step": 8
+     }
+    ],
+    "samples_from": [
+     "LATENT"
+    ],
+    "samples_to": [
+     "LATENT"
+    ],
+    "x": [
+     "INT",
+     {
+      "default": 0,
+      "max": 16384,
+      "min": 0,
+      "step": 8
+     }
+    ],
+    "y": [
+     "INT",
+     {
+      "default": 0,
+      "max": 16384,
+      "min": 0,
+      "step": 8
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "LatentCompositeMasked": {
+  "input": {
+   "required": {
+    "destination": [
+     "LATENT"
+    ],
+    "resize_source": [
+     "BOOLEAN",
+     {
+      "default": false
+     }
+    ],
+    "source": [
+     "LATENT"
+    ],
+    "x": [
+     "INT",
+     {
+      "default": 0,
+      "min": 0,
+      "step": 8
+     }
+    ],
+    "y": [
+     "INT",
+     {
+      "default": 0,
+      "min": 0,
+      "step": 8
+     }
+    ]
+   },
+   "optional": {
+    "mask": [
+     "MASK"
+    ]
+   }
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "LatentFromBatch": {
+  "input": {
+   "required": {
+    "batch_index": [
+     "INT",
+     {
+      "default": 0,
+      "max": 16384,
+      "min": -16384
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 1,
+      "max": 64,
+      "min": 1
+     }
+    ],
+    "samples": [
+     "LATENT"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "LatentUpscale": {
+  "input": {
+   "required": {
+    "crop": [
+     [
+      "disabled",
+      "center"
+     ]
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 512,
+      "max": 16384,
+      "min": 0,
+      "step": 8
+     }
+    ],
+    "samples": [
+     "LATENT"
+    ],
+    "upscale_method": [
+     [
+      "nearest-exact",
+      "bilinear",
+      "area",
+      "bicubic",
+      "bislerp"
+     ]
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 512,
+      "max": 16384,
+      "min": 0,
+      "step": 8
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "LatentUpscaleBy": {
+  "input": {
+   "required": {
+    "samples": [
+     "LATENT"
+    ],
+    "scale_by": [
+     "FLOAT",
+     {
+      "default": 1.5,
+      "max": 8.0,
+      "min": 0.01,
+      "step": 0.01
+     }
+    ],
+    "upscale_method": [
+     [
+      "nearest-exact",
+      "bilinear",
+      "area",
+      "bicubic",
+      "bislerp"
+     ]
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "LoadAudio": {
+  "input": {
+   "required": {
+    "audio": [
+     [
+      "__ANY__"
+     ]
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "AUDIO"
+  ],
+  "output_name": [
+   "AUDIO"
+  ]
+ },
+ "LoadImage": {
+  "input": {
+   "required": {
+    "image": [
+     [
+      "__ANY__"
+     ],
+     {
+      "image_upload": true
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE",
+   "MASK"
+  ],
+  "output_name": [
+   "IMAGE",
+   "MASK"
+  ]
+ },
+ "LoadImageMask": {
+  "input": {
+   "required": {
+    "channel": [
+     [
+      "alpha",
+      "red",
+      "green",
+      "blue"
+     ],
+     {
+      "default": "alpha"
+     }
+    ],
+    "image": [
+     [
+      "__ANY__"
+     ],
+     {
+      "image_upload": true
+     }
+    ]
+   },
+   "optional": {
+    "upload": [
+     [
+      "image"
+     ]
+    ]
+   }
+  },
+  "output": [
+   "MASK"
+  ],
+  "output_name": [
+   "MASK"
+  ]
+ },
+ "LoadImageOutput": {
+  "input": {
+   "required": {
+    "image": [
+     [
+      "__ANY__"
+     ]
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE",
+   "MASK"
+  ],
+  "output_name": [
+   "IMAGE",
+   "MASK"
+  ]
+ },
+ "LoadVideo": {
+  "input": {
+   "required": {
+    "file": [
+     [
+      "__ANY__"
+     ]
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "VIDEO"
+  ],
+  "output_name": [
+   "VIDEO"
+  ]
+ },
+ "LoraLoader": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL",
+     {
+      "tooltip": "The diffusion model the LoRA will be applied to."
+     }
+    ],
+    "clip": [
+     "CLIP",
+     {
+      "tooltip": "The CLIP model the LoRA will be applied to."
+     }
+    ],
+    "lora_name": [
+     [
+      "__ANY__"
+     ],
+     {
+      "tooltip": "The name of the LoRA."
+     }
+    ],
+    "strength_model": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 100.0,
+      "min": -100.0,
+      "step": 0.01,
+      "tooltip": "How strongly to modify the diffusion model. This value can be negative."
+     }
+    ],
+    "strength_clip": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 100.0,
+      "min": -100.0,
+      "step": 0.01,
+      "tooltip": "How strongly to modify the CLIP model. This value can be negative."
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL",
+   "CLIP"
+  ],
+  "output_name": [
+   "MODEL",
+   "CLIP"
+  ]
+ },
+ "LoraLoaderBypass": {
+  "input": {
+   "required": {
+    "clip": [
+     "CLIP",
+     {
+      "tooltip": "The CLIP model the LoRA will be applied to."
+     }
+    ],
+    "lora_name": [
+     [
+      "__ANY__"
+     ],
+     {
+      "tooltip": "The name of the LoRA."
+     }
+    ],
+    "model": [
+     "MODEL",
+     {
+      "tooltip": "The diffusion model the LoRA will be applied to."
+     }
+    ],
+    "strength_clip": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 100.0,
+      "min": -100.0,
+      "step": 0.01,
+      "tooltip": "How strongly to modify the CLIP model. This value can be negative."
+     }
+    ],
+    "strength_model": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 100.0,
+      "min": -100.0,
+      "step": 0.01,
+      "tooltip": "How strongly to modify the diffusion model. This value can be negative."
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL",
+   "CLIP"
+  ],
+  "output_name": [
+   "MODEL",
+   "CLIP"
+  ]
+ },
+ "LoraLoaderModelOnly": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL"
+    ],
+    "lora_name": [
+     [
+      "__ANY__"
+     ]
+    ],
+    "strength_model": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 100.0,
+      "min": -100.0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "MaskComposite": {
+  "input": {
+   "required": {
+    "destination": [
+     "MASK"
+    ],
+    "operation": [
+     [
+      "multiply",
+      "add",
+      "subtract",
+      "and",
+      "or",
+      "xor"
+     ],
+     {
+      "default": "multiply"
+     }
+    ],
+    "source": [
+     "MASK"
+    ],
+    "x": [
+     "INT",
+     {
+      "default": 0,
+      "min": 0,
+      "step": 1
+     }
+    ],
+    "y": [
+     "INT",
+     {
+      "default": 0,
+      "min": 0,
+      "step": 1
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MASK"
+  ],
+  "output_name": [
+   "MASK"
+  ]
+ },
+ "MaskToImage": {
+  "input": {
+   "required": {
+    "mask": [
+     "MASK"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "MiniMaxH3AddGuide": {
+  "input": {
+   "required": {
+    "frame_idx": [
+     "INT",
+     {
+      "default": 0,
+      "max": 9999,
+      "min": -9999
+     }
+    ],
+    "latent": [
+     "LATENT"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ]
+   },
+   "optional": {
+    "audio": [
+     "AUDIO"
+    ],
+    "audio_vae": [
+     "VAE"
+    ],
+    "image": [
+     "IMAGE"
+    ],
+    "vae": [
+     "VAE"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "MiniMaxH3FunControlNetApply": {
+  "input": {
+   "required": {
+    "end_percent": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ],
+    "model": [
+     "MODEL"
+    ],
+    "model_patch": [
+     "MODEL_PATCH"
+    ],
+    "start_percent": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 0.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 10.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "vae": [
+     "VAE"
+    ]
+   },
+   "optional": {
+    "control_video": [
+     "IMAGE"
+    ],
+    "mask": [
+     "MASK"
+    ],
+    "source_video": [
+     "IMAGE"
+    ]
+   }
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "MiniMaxH3ImageToVideo": {
+  "input": {
+   "required": {
+    "clip": [
+     "CLIP"
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 768,
+      "min": 32,
+      "step": 32
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 124,
+      "max": 3600,
+      "min": 5,
+      "step": 17
+     }
+    ],
+    "prompt": [
+     "STRING",
+     {
+      "dynamic_prompts": true,
+      "multiline": true
+     }
+    ],
+    "vae": [
+     "VAE"
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 1344,
+      "min": 32,
+      "step": 32
+     }
+    ]
+   },
+   "optional": {
+    "first_frame": [
+     "IMAGE"
+    ],
+    "last_frame": [
+     "IMAGE"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "MiniMaxH3LatentUpscaleWithModel": {
+  "input": {
+   "required": {
+    "height": [
+     "INT",
+     {
+      "default": 1440,
+      "min": 32,
+      "step": 32
+     }
+    ],
+    "model": [
+     "LATENTUPSCALEMODEL"
+    ],
+    "samples": [
+     "LATENT"
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 2560,
+      "min": 32,
+      "step": 32
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "MiniMaxH3ReferenceToVideo": {
+  "input": {
+   "required": {
+    "clip": [
+     "CLIP"
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 768,
+      "min": 32,
+      "step": 32
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 124,
+      "max": 3600,
+      "min": 5,
+      "step": 17
+     }
+    ],
+    "prompt": [
+     "STRING",
+     {
+      "dynamic_prompts": true,
+      "multiline": true
+     }
+    ],
+    "ref_image_size": [
+     [
+      "match",
+      "max"
+     ],
+     {
+      "default": "match"
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 1344,
+      "min": 32,
+      "step": 32
+     }
+    ]
+   },
+   "optional": {
+    "audio_vae": [
+     "VAE"
+    ],
+    "ref_audios": [
+     "AUTOGROW",
+     {
+      "template": [
+       "COMBO"
+      ]
+     }
+    ],
+    "ref_images": [
+     "AUTOGROW",
+     {
+      "template": [
+       "COMBO"
+      ]
+     }
+    ],
+    "ref_video_audios": [
+     "AUTOGROW",
+     {
+      "template": [
+       "COMBO"
+      ]
+     }
+    ],
+    "ref_videos": [
+     "AUTOGROW",
+     {
+      "template": [
+       "COMBO"
+      ]
+     }
+    ],
+    "vae": [
+     "VAE"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "MiniMaxH3SigmaShift": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL"
+    ],
+    "shift_audio": [
+     "FLOAT",
+     {
+      "default": 3.0,
+      "max": 100.0,
+      "min": 0.01,
+      "step": 0.01
+     }
+    ],
+    "shift_video": [
+     "FLOAT",
+     {
+      "default": 12.0,
+      "max": 100.0,
+      "min": 0.01,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "ModelComputeDtype": {
+  "input": {
+   "required": {
+    "dtype": [
+     [
+      "default",
+      "fp32",
+      "fp16",
+      "bf16"
+     ],
+     {
+      "advanced": true
+     }
+    ],
+    "model": [
+     "MODEL"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "ModelMergeFlux1": {
+  "input": {
+   "required": {
+    "model1": [
+     "MODEL"
+    ],
+    "model2": [
+     "MODEL"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [],
+  "output_name": []
+ },
+ "ModelMergeSDXL": {
+  "input": {
+   "required": {
+    "model1": [
+     "MODEL"
+    ],
+    "model2": [
+     "MODEL"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [],
+  "output_name": []
+ },
+ "ModelMergeSimple": {
+  "input": {
+   "required": {
+    "model1": [
+     "MODEL"
+    ],
+    "model2": [
+     "MODEL"
+    ],
+    "ratio": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "ModelMergeWAN2_1": {
+  "input": {
+   "required": {
+    "model1": [
+     "MODEL"
+    ],
+    "model2": [
+     "MODEL"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [],
+  "output_name": []
+ },
+ "ModelNoiseScale": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL"
+    ],
+    "noise_scale": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 64.0,
+      "min": 0.0,
+      "step": 0.01,
+      "tooltip": "Absolute training noise scale. For example HiDream-O1 base: 8.0, dev: 7.5."
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "ModelPatchLoader": {
+  "input": {
+   "required": {
+    "name": [
+     [
+      "__ANY__"
+     ]
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL_PATCH"
+  ],
+  "output_name": [
+   "MODEL_PATCH"
+  ]
+ },
+ "ModelPreviewOverrideKJ": {
+  "input": {
+   "required": {
+    "jpeg_quality": [
+     "INT",
+     {
+      "default": 80,
+      "max": 100,
+      "min": 10
+     }
+    ],
+    "max_resolution": [
+     "INT",
+     {
+      "default": 1024,
+      "max": 4096,
+      "min": 64
+     }
+    ],
+    "model": [
+     "MODEL"
+    ],
+    "preview_fps": [
+     "INT",
+     {
+      "default": 12,
+      "max": 60,
+      "min": 1
+     }
+    ],
+    "preview_frames": [
+     "INT",
+     {
+      "default": 1,
+      "max": 128,
+      "min": 1
+     }
+    ],
+    "suppress_default_preview": [
+     "BOOLEAN",
+     {
+      "default": true
+     }
+    ]
+   },
+   "optional": {
+    "audio_vae": [
+     "VAE"
+    ],
+    "tiny_vae": [
+     [
+      "none",
+      "taehv.safetensors",
+      "taeh3.safetensors",
+      "taesd.safetensors",
+      "taesdxl.safetensors",
+      "lighttaew2_2.safetensors"
+     ],
+     {
+      "default": "none"
+     }
+    ],
+    "vae": [
+     "VAE"
+    ]
+   }
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "ModelSamplingAuraFlow": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL"
+    ],
+    "shift": [
+     "FLOAT",
+     {
+      "default": 1.73,
+      "max": 100.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {
+    "sampling": [
+     [
+      "flow",
+      "img_to_img_velocity"
+     ],
+     {
+      "advanced": true,
+      "default": "flow"
+     }
+    ]
+   }
+  },
+  "output": [],
+  "output_name": []
+ },
+ "ModelSamplingContinuousV": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL"
+    ],
+    "sampling": [
+     [
+      "v_prediction"
+     ]
+    ],
+    "sigma_max": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 500.0,
+      "max": 1000.0,
+      "min": 0.0,
+      "round": false,
+      "step": 0.001
+     }
+    ],
+    "sigma_min": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 0.03,
+      "max": 1000.0,
+      "min": 0.0,
+      "round": false,
+      "step": 0.001
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "ModelSamplingDiscrete": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL"
+    ],
+    "sampling": [
+     [
+      "eps",
+      "v_prediction",
+      "lcm",
+      "x0",
+      "img_to_img",
+      "img_to_img_flow"
+     ]
+    ],
+    "zsnr": [
+     "BOOLEAN",
+     {
+      "advanced": true,
+      "default": false
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "ModelSamplingFlux": {
+  "input": {
+   "required": {
+    "base_shift": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 0.5,
+      "max": 100.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 1024,
+      "max": "COMBO",
+      "min": 16,
+      "step": 8
+     }
+    ],
+    "max_shift": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 1.15,
+      "max": 100.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "model": [
+     "MODEL"
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 1024,
+      "max": "COMBO",
+      "min": 16,
+      "step": 8
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "ModelSamplingLTXV": {
+  "input": {
+   "required": {
+    "base_shift": [
+     "FLOAT",
+     {
+      "default": 0.95,
+      "max": 100.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "max_shift": [
+     "FLOAT",
+     {
+      "default": 2.05,
+      "max": 100.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "model": [
+     "MODEL"
+    ]
+   },
+   "optional": {
+    "latent": [
+     "LATENT"
+    ]
+   }
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "ModelSamplingSD3": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL"
+    ],
+    "shift": [
+     "FLOAT",
+     {
+      "default": 3.0,
+      "max": 100.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "PairConditioningCombine": {
+  "input": {
+   "required": {
+    "negative_A": [
+     "CONDITIONING"
+    ],
+    "negative_B": [
+     "CONDITIONING"
+    ],
+    "positive_A": [
+     "CONDITIONING"
+    ],
+    "positive_B": [
+     "CONDITIONING"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING"
+  ]
+ },
+ "PairConditioningSetDefaultAndCombine": {
+  "input": {
+   "required": {
+    "negative": [
+     "CONDITIONING"
+    ],
+    "negative_DEFAULT": [
+     "CONDITIONING"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "positive_DEFAULT": [
+     "CONDITIONING"
+    ]
+   },
+   "optional": {
+    "hooks": [
+     "HOOKS"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING"
+  ]
+ },
+ "PreviewImage": {
+  "input": {
+   "required": {
+    "images": [
+     "IMAGE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [],
+  "output_name": []
+ },
+ "QuadrupleCLIPLoader": {
+  "input": {
+   "required": {
+    "clip_name1": [
+     [
+      "__ANY__"
+     ],
+     {
+      "default": "__ANY__"
+     }
+    ],
+    "clip_name2": [
+     [
+      "__ANY__"
+     ],
+     {
+      "default": "__ANY__"
+     }
+    ],
+    "clip_name3": [
+     [
+      "__ANY__"
+     ],
+     {
+      "default": "__ANY__"
+     }
+    ],
+    "clip_name4": [
+     [
+      "__ANY__"
+     ],
+     {
+      "default": "__ANY__"
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CLIP"
+  ],
+  "output_name": [
+   "CLIP"
+  ]
+ },
+ "QwenImageDiffsynthControlnet": {
+  "input": {
+   "required": {
+    "image": [
+     "IMAGE"
+    ],
+    "model": [
+     "MODEL"
+    ],
+    "model_patch": [
+     "MODEL_PATCH"
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 10.0,
+      "min": -10.0,
+      "step": 0.01
+     }
+    ],
+    "vae": [
+     "VAE"
+    ]
+   },
+   "optional": {
+    "end_percent": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ],
+    "mask": [
+     "MASK"
+    ],
+    "start_percent": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 0.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ]
+   }
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "RepeatImageBatch": {
+  "input": {
+   "required": {
+    "amount": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "image": [
+     "IMAGE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "RepeatLatentBatch": {
+  "input": {
+   "required": {
+    "amount": [
+     "INT",
+     {
+      "default": 1,
+      "max": 64,
+      "min": 1
+     }
+    ],
+    "samples": [
+     "LATENT"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "RescaleCFG": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL"
+    ],
+    "multiplier": [
+     "FLOAT",
+     {
+      "default": 0.7,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "SVD_img2vid_Conditioning": {
+  "input": {
+   "required": {
+    "augmentation_level": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 0.0,
+      "max": 10.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "clip_vision": [
+     "CLIP_VISION"
+    ],
+    "fps": [
+     "INT",
+     {
+      "default": 6,
+      "max": 1024,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 576,
+      "max": "COMBO",
+      "min": 16,
+      "step": 8
+     }
+    ],
+    "init_image": [
+     "IMAGE"
+    ],
+    "motion_bucket_id": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 127,
+      "max": 1023,
+      "min": 1
+     }
+    ],
+    "vae": [
+     "VAE"
+    ],
+    "video_frames": [
+     "INT",
+     {
+      "default": 14,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 1024,
+      "max": "COMBO",
+      "min": 16,
+      "step": 8
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "SamplerCustomAdvanced": {
+  "input": {
+   "required": {
+    "guider": [
+     "GUIDER"
+    ],
+    "latent_image": [
+     "LATENT"
+    ],
+    "noise": [
+     "NOISE"
+    ],
+    "sampler": [
+     "SAMPLER"
+    ],
+    "sigmas": [
+     "SIGMAS"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT",
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT",
+   "LATENT"
+  ]
+ },
+ "SaveAnimatedPNG": {
+  "input": {
+   "required": {
+    "compress_level": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 4,
+      "max": 9,
+      "min": 0
+     }
+    ],
+    "filename_prefix": [
+     "STRING",
+     {
+      "default": "ComfyUI"
+     }
+    ],
+    "fps": [
+     "FLOAT",
+     {
+      "default": 6.0,
+      "max": 1000.0,
+      "min": 0.01,
+      "step": 0.01
+     }
+    ],
+    "images": [
+     "IMAGE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "SaveAnimatedWEBP": {
+  "input": {
+   "required": {
+    "filename_prefix": [
+     "STRING",
+     {
+      "default": "ComfyUI"
+     }
+    ],
+    "fps": [
+     "FLOAT",
+     {
+      "default": 6.0,
+      "max": 1000.0,
+      "min": 0.01,
+      "step": 0.01
+     }
+    ],
+    "images": [
+     "IMAGE"
+    ],
+    "lossless": [
+     "BOOLEAN",
+     {
+      "default": true
+     }
+    ],
+    "method": [
+     [
+      "COMBO"
+     ],
+     {
+      "default": "COMBO"
+     }
+    ],
+    "quality": [
+     "INT",
+     {
+      "default": 80,
+      "max": 100,
+      "min": 0
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "SaveAudio": {
+  "input": {
+   "required": {
+    "audio": [
+     "AUDIO"
+    ],
+    "filename_prefix": [
+     "STRING",
+     {
+      "default": "audio/ComfyUI"
+     }
+    ]
+   },
+   "optional": {
+    "format": [
+     [
+      "flac",
+      "mp3",
+      "wav",
+      "vorbis",
+      "opus"
+     ],
+     {
+      "default": "flac"
+     }
+    ]
+   }
+  },
+  "output": [
+   "AUDIO"
+  ],
+  "output_name": [
+   "AUDIO"
+  ]
+ },
+ "SaveImage": {
+  "input": {
+   "required": {
+    "images": [
+     "IMAGE",
+     {
+      "tooltip": "The images to save."
+     }
+    ],
+    "filename_prefix": [
+     "STRING",
+     {
+      "default": "ComfyUI",
+      "tooltip": "The prefix for the file to save. This may include formatting information such as %date:yyyy-MM-dd% or %Empty Latent Image.width% to include values from nodes."
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "SaveLatent": {
+  "input": {
+   "required": {
+    "filename_prefix": [
+     "STRING",
+     {
+      "default": "latents/ComfyUI"
+     }
+    ],
+    "samples": [
+     "LATENT"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "SaveVideo": {
+  "input": {
+   "required": {
+    "filename_prefix": [
+     "STRING",
+     {
+      "default": "video/ComfyUI"
+     }
+    ],
+    "format": [
+     [
+      "auto",
+      "mp4",
+      "mkv",
+      "webm",
+      "mov"
+     ],
+     {
+      "default": "auto"
+     }
+    ],
+    "video": [
+     "VIDEO"
+    ]
+   },
+   "optional": {
+    "codec": [
+     [
+      "auto",
+      "h264",
+      "av1",
+      "prores"
+     ],
+     {
+      "default": "auto"
+     }
+    ]
+   }
+  },
+  "output": [
+   "VIDEO"
+  ],
+  "output_name": [
+   "VIDEO"
+  ]
+ },
+ "SaveWEBM": {
+  "input": {
+   "required": {
+    "codec": [
+     [
+      "vp9",
+      "av1"
+     ],
+     {
+      "default": "vp9"
+     }
+    ],
+    "crf": [
+     "FLOAT",
+     {
+      "default": 32.0,
+      "max": 63.0,
+      "min": 0,
+      "step": 1
+     }
+    ],
+    "filename_prefix": [
+     "STRING",
+     {
+      "default": "ComfyUI"
+     }
+    ],
+    "fps": [
+     "FLOAT",
+     {
+      "default": 24.0,
+      "max": 1000.0,
+      "min": 0.01,
+      "step": 0.01
+     }
+    ],
+    "images": [
+     "IMAGE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "SeedVR2LoadDiTModel": {
+  "input": {
+   "required": {
+    "attention_mode": [
+     [
+      "auto",
+      "sdpa",
+      "flash_attn",
+      "xformers"
+     ],
+     {
+      "default": "auto"
+     }
+    ],
+    "blocks_to_swap": [
+     "INT",
+     {
+      "default": 0,
+      "max": 48,
+      "min": 0
+     }
+    ],
+    "cache_model": [
+     "BOOLEAN",
+     {
+      "default": false
+     }
+    ],
+    "device": [
+     [
+      "cuda:0",
+      "cpu"
+     ],
+     {
+      "default": "cuda:0"
+     }
+    ],
+    "model": [
+     [
+      "__ANY__"
+     ]
+    ],
+    "offload_device": [
+     [
+      "cuda:0",
+      "cpu",
+      "none"
+     ],
+     {
+      "default": "cpu"
+     }
+    ],
+    "swap_io_components": [
+     "BOOLEAN",
+     {
+      "default": false
+     }
+    ]
+   },
+   "optional": {
+    "torch_compile_args": [
+     "TORCH_COMPILE_ARGS"
+    ]
+   }
+  },
+  "output": [
+   "SEEDVR2_DIT"
+  ],
+  "output_name": [
+   "SEEDVR2_DIT"
+  ]
+ },
+ "SeedVR2LoadVAEModel": {
+  "input": {
+   "required": {
+    "cache_model": [
+     "BOOLEAN",
+     {
+      "default": false
+     }
+    ],
+    "decode_tile_overlap": [
+     "INT",
+     {
+      "default": 128,
+      "max": 2048,
+      "min": 64
+     }
+    ],
+    "decode_tile_size": [
+     "INT",
+     {
+      "default": 1024,
+      "max": 4096,
+      "min": 256
+     }
+    ],
+    "decode_tiled": [
+     "BOOLEAN",
+     {
+      "default": true
+     }
+    ],
+    "device": [
+     [
+      "cuda:0",
+      "cpu"
+     ],
+     {
+      "default": "cuda:0"
+     }
+    ],
+    "encode_tile_overlap": [
+     "INT",
+     {
+      "default": 128,
+      "max": 2048,
+      "min": 64
+     }
+    ],
+    "encode_tile_size": [
+     "INT",
+     {
+      "default": 1024,
+      "max": 4096,
+      "min": 256
+     }
+    ],
+    "encode_tiled": [
+     "BOOLEAN",
+     {
+      "default": false
+     }
+    ],
+    "model": [
+     [
+      "__ANY__"
+     ]
+    ],
+    "offload_device": [
+     [
+      "cuda:0",
+      "cpu",
+      "none"
+     ],
+     {
+      "default": "cpu"
+     }
+    ]
+   },
+   "optional": {
+    "tile_debug": [
+     [
+      "enable",
+      "disable"
+     ],
+     {
+      "default": "disable"
+     }
+    ],
+    "torch_compile_args": [
+     "TORCH_COMPILE_ARGS"
+    ]
+   }
+  },
+  "output": [
+   "SEEDVR2_VAE"
+  ],
+  "output_name": [
+   "SEEDVR2_VAE"
+  ]
+ },
+ "SeedVR2TorchCompileSettings": {
+  "input": {
+   "required": {
+    "backend": [
+     [
+      "inductor",
+      "cudagraphs"
+     ],
+     {
+      "default": "inductor"
+     }
+    ],
+    "dynamic": [
+     "BOOLEAN",
+     {
+      "default": false
+     }
+    ],
+    "dynamo_cache_size_limit": [
+     "INT",
+     {
+      "default": 8,
+      "max": 128,
+      "min": 1
+     }
+    ],
+    "dynamo_recompile_limit": [
+     "INT",
+     {
+      "default": 8,
+      "max": 128,
+      "min": 1
+     }
+    ],
+    "fullgraph": [
+     "BOOLEAN",
+     {
+      "default": false
+     }
+    ],
+    "mode": [
+     [
+      "default",
+      "reduce-overhead",
+      "max-autotune"
+     ],
+     {
+      "default": "default"
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "TORCH_COMPILE_ARGS"
+  ],
+  "output_name": [
+   "TORCH_COMPILE_ARGS"
+  ]
+ },
+ "SeedVR2VideoUpscaler": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 5,
+      "max": 16384,
+      "min": 1,
+      "step": 4
+     }
+    ],
+    "color_correction": [
+     [
+      "lab",
+      "wavelet",
+      "wavelet_adaptive",
+      "hsv",
+      "adain",
+      "none"
+     ],
+     {
+      "default": "lab"
+     }
+    ],
+    "dit": [
+     "SEEDVR2_DIT"
+    ],
+    "image": [
+     "IMAGE"
+    ],
+    "max_resolution": [
+     "INT",
+     {
+      "default": 0,
+      "max": 16384,
+      "min": 0,
+      "step": 2
+     }
+    ],
+    "resolution": [
+     "INT",
+     {
+      "default": 1080,
+      "max": 16384,
+      "min": 16,
+      "step": 2
+     }
+    ],
+    "seed": [
+     "INT",
+     {
+      "default": 42,
+      "max": 4294967295,
+      "min": 0
+     }
+    ],
+    "uniform_batch_size": [
+     "BOOLEAN",
+     {
+      "default": false
+     }
+    ],
+    "vae": [
+     "SEEDVR2_VAE"
+    ]
+   },
+   "optional": {
+    "enable_debug": [
+     "BOOLEAN",
+     {
+      "default": false
+     }
+    ],
+    "input_noise_scale": [
+     "FLOAT",
+     {
+      "default": 0.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ],
+    "latent_noise_scale": [
+     "FLOAT",
+     {
+      "default": 0.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ],
+    "offload_device": [
+     [
+      "cuda:0",
+      "cpu",
+      "none"
+     ],
+     {
+      "default": "cpu"
+     }
+    ],
+    "prepend_frames": [
+     "INT",
+     {
+      "default": 0,
+      "max": 32,
+      "min": 0
+     }
+    ],
+    "temporal_overlap": [
+     "INT",
+     {
+      "default": 0,
+      "max": 16,
+      "min": 0
+     }
+    ]
+   }
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "SetLatentNoiseMask": {
+  "input": {
+   "required": {
+    "mask": [
+     "MASK"
+    ],
+    "samples": [
+     "LATENT"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "SolidMask": {
+  "input": {
+   "required": {
+    "height": [
+     "INT",
+     {
+      "default": 512,
+      "min": 1,
+      "step": 1
+     }
+    ],
+    "value": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 512,
+      "min": 1,
+      "step": 1
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MASK"
+  ],
+  "output_name": [
+   "MASK"
+  ]
+ },
+ "StyleModelApply": {
+  "input": {
+   "required": {
+    "clip_vision_output": [
+     "CLIP_VISION_OUTPUT"
+    ],
+    "conditioning": [
+     "CONDITIONING"
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 10.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ],
+    "strength_type": [
+     [
+      "multiply",
+      "attn_bias"
+     ]
+    ],
+    "style_model": [
+     "STYLE_MODEL"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "StyleModelLoader": {
+  "input": {
+   "required": {
+    "style_model_name": [
+     [
+      "__ANY__"
+     ]
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "STYLE_MODEL"
+  ],
+  "output_name": [
+   "STYLE_MODEL"
+  ]
+ },
+ "TextEncodeHunyuanVideo_ImageToVideo": {
+  "input": {
+   "required": {
+    "clip": [
+     "CLIP"
+    ],
+    "clip_vision_output": [
+     "CLIP_VISION_OUTPUT"
+    ],
+    "image_interleave": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 2,
+      "max": 512,
+      "min": 1
+     }
+    ],
+    "prompt": [
+     "STRING",
+     {
+      "dynamic_prompts": true,
+      "multiline": true
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ },
+ "ThresholdMask": {
+  "input": {
+   "required": {
+    "mask": [
+     "MASK"
+    ],
+    "value": [
+     "FLOAT",
+     {
+      "default": 0.5,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MASK"
+  ],
+  "output_name": [
+   "MASK"
+  ]
+ },
+ "TrimAudioDuration": {
+  "input": {
+   "required": {
+    "audio": [
+     "AUDIO"
+    ],
+    "duration": [
+     "FLOAT",
+     {
+      "default": 60.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "start_index": [
+     "FLOAT",
+     {
+      "default": 0.0,
+      "max": 18446744073709551615,
+      "min": -18446744073709551615,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "AUDIO"
+  ],
+  "output_name": [
+   "AUDIO"
+  ]
+ },
+ "TrimVideoLatent": {
+  "input": {
+   "required": {
+    "samples": [
+     "LATENT"
+    ],
+    "trim_amount": [
+     "INT",
+     {
+      "default": 0,
+      "max": 99999,
+      "min": 0
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "TripleCLIPLoader": {
+  "input": {
+   "required": {
+    "clip_name1": [
+     [
+      "__ANY__"
+     ],
+     {
+      "default": "__ANY__"
+     }
+    ],
+    "clip_name2": [
+     [
+      "__ANY__"
+     ],
+     {
+      "default": "__ANY__"
+     }
+    ],
+    "clip_name3": [
+     [
+      "__ANY__"
+     ],
+     {
+      "default": "__ANY__"
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CLIP"
+  ],
+  "output_name": [
+   "CLIP"
+  ]
+ },
+ "UNETLoader": {
+  "input": {
+   "required": {
+    "unet_name": [
+     [
+      "__ANY__"
+     ]
+    ],
+    "weight_dtype": [
+     [
+      "default",
+      "fp8_e4m3fn",
+      "fp8_e4m3fn_fast",
+      "fp8_e5m2"
+     ],
+     {
+      "advanced": true
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "UpscaleModelLoader": {
+  "input": {
+   "required": {
+    "model_name": [
+     [
+      "__ANY__"
+     ],
+     {
+      "default": "__ANY__"
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "UPSCALE_MODEL"
+  ],
+  "output_name": [
+   "UPSCALE_MODEL"
+  ]
+ },
+ "VAEDecode": {
+  "input": {
+   "required": {
+    "samples": [
+     "LATENT",
+     {
+      "tooltip": "The latent to be decoded."
+     }
+    ],
+    "vae": [
+     "VAE",
+     {
+      "tooltip": "The VAE model used for decoding the latent."
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "VAEDecodeAudio": {
+  "input": {
+   "required": {
+    "samples": [
+     "LATENT"
+    ],
+    "vae": [
+     "VAE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "AUDIO"
+  ],
+  "output_name": [
+   "audio"
+  ]
+ },
+ "VAEDecodeTiled": {
+  "input": {
+   "required": {
+    "overlap": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 64,
+      "max": 4096,
+      "min": 0,
+      "step": 32
+     }
+    ],
+    "samples": [
+     "LATENT"
+    ],
+    "temporal_overlap": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 8,
+      "max": 4096,
+      "min": 4,
+      "step": 4,
+      "tooltip": "Only used for video VAEs: Amount of frames to overlap."
+     }
+    ],
+    "temporal_size": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 64,
+      "max": 4096,
+      "min": 8,
+      "step": 4,
+      "tooltip": "Only used for video VAEs: Amount of frames to decode at a time."
+     }
+    ],
+    "tile_size": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 512,
+      "max": 4096,
+      "min": 64,
+      "step": 32
+     }
+    ],
+    "vae": [
+     "VAE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ]
+ },
+ "VAEEncode": {
+  "input": {
+   "required": {
+    "pixels": [
+     "IMAGE"
+    ],
+    "vae": [
+     "VAE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "VAEEncodeForInpaint": {
+  "input": {
+   "required": {
+    "grow_mask_by": [
+     "INT",
+     {
+      "default": 6,
+      "max": 64,
+      "min": 0,
+      "step": 1
+     }
+    ],
+    "mask": [
+     "MASK"
+    ],
+    "pixels": [
+     "IMAGE"
+    ],
+    "vae": [
+     "VAE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "VAEEncodeTiled": {
+  "input": {
+   "required": {
+    "overlap": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 64,
+      "max": 4096,
+      "min": 0,
+      "step": 32
+     }
+    ],
+    "pixels": [
+     "IMAGE"
+    ],
+    "temporal_overlap": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 8,
+      "max": 4096,
+      "min": 4,
+      "step": 4,
+      "tooltip": "Only used for video VAEs: Amount of frames to overlap."
+     }
+    ],
+    "temporal_size": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 64,
+      "max": 4096,
+      "min": 8,
+      "step": 4,
+      "tooltip": "Only used for video VAEs: Amount of frames to encode at a time."
+     }
+    ],
+    "tile_size": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 512,
+      "max": 4096,
+      "min": 64,
+      "step": 64
+     }
+    ],
+    "vae": [
+     "VAE"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "VAELoader": {
+  "input": {
+   "required": {
+    "vae_name": [
+     [
+      "__ANY__"
+     ]
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "VAE"
+  ],
+  "output_name": [
+   "VAE"
+  ]
+ },
+ "VideoCrop": {
+  "input": {
+   "required": {
+    "crop": [
+     "VIDEOEDIT",
+     {
+      "features": [
+       "crop"
+      ]
+     }
+    ],
+    "video": [
+     "VIDEO"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "VIDEO"
+  ],
+  "output_name": [
+   "VIDEO"
+  ]
+ },
+ "VideoLinearCFGGuidance": {
+  "input": {
+   "required": {
+    "min_cfg": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 1.0,
+      "max": 100.0,
+      "min": 0.0,
+      "round": 0.01,
+      "step": 0.5
+     }
+    ],
+    "model": [
+     "MODEL"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "VideoSlice": {
+  "input": {
+   "required": {
+    "duration": [
+     "FLOAT",
+     {
+      "default": 0.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ],
+    "start_time": [
+     "FLOAT",
+     {
+      "default": 0.0,
+      "max": 100000.0,
+      "min": -100000.0,
+      "step": 0.001
+     }
+    ],
+    "strict_duration": [
+     "BOOLEAN",
+     {
+      "default": false
+     }
+    ],
+    "video": [
+     "VIDEO"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "VIDEO"
+  ],
+  "output_name": [
+   "VIDEO"
+  ]
+ },
+ "VideoTriangleCFGGuidance": {
+  "input": {
+   "required": {
+    "min_cfg": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 1.0,
+      "max": 100.0,
+      "min": 0.0,
+      "round": 0.01,
+      "step": 0.5
+     }
+    ],
+    "model": [
+     "MODEL"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ]
+ },
+ "VideoTrim": {
+  "input": {
+   "required": {
+    "strict_duration": [
+     "BOOLEAN",
+     {
+      "advanced": true,
+      "default": false
+     }
+    ],
+    "trim": [
+     "VIDEOEDIT",
+     {
+      "features": [
+       "trim"
+      ]
+     }
+    ],
+    "video": [
+     "VIDEO"
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "VIDEO"
+  ],
+  "output_name": [
+   "VIDEO"
+  ]
+ },
+ "Wan22FunControlToVideo": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 480,
+      "min": 16,
+      "step": 16
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 81,
+      "min": 1,
+      "step": 4
+     }
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "vae": [
+     "VAE"
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 832,
+      "min": 16,
+      "step": 16
+     }
+    ]
+   },
+   "optional": {
+    "control_video": [
+     "IMAGE"
+    ],
+    "ref_image": [
+     "IMAGE"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "Wan22ImageToVideoLatent": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 704,
+      "min": 32,
+      "step": 32
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 49,
+      "min": 1,
+      "step": 4
+     }
+    ],
+    "vae": [
+     "VAE"
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 1280,
+      "min": 32,
+      "step": 32
+     }
+    ]
+   },
+   "optional": {
+    "start_image": [
+     "IMAGE"
+    ]
+   }
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ]
+ },
+ "WanCameraImageToVideo": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 480,
+      "min": 16,
+      "step": 16
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 81,
+      "min": 1,
+      "step": 4
+     }
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "vae": [
+     "VAE"
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 832,
+      "min": 16,
+      "step": 16
+     }
+    ]
+   },
+   "optional": {
+    "camera_conditions": [
+     "WANCAMERAEMBEDDING"
+    ],
+    "clip_vision_output": [
+     "CLIP_VISION_OUTPUT"
+    ],
+    "start_image": [
+     "IMAGE"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "WanFirstLastFrameToVideo": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 480,
+      "min": 16,
+      "step": 16
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 81,
+      "min": 1,
+      "step": 4
+     }
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "vae": [
+     "VAE"
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 832,
+      "min": 16,
+      "step": 16
+     }
+    ]
+   },
+   "optional": {
+    "clip_vision_end_image": [
+     "CLIP_VISION_OUTPUT"
+    ],
+    "clip_vision_start_image": [
+     "CLIP_VISION_OUTPUT"
+    ],
+    "end_image": [
+     "IMAGE"
+    ],
+    "start_image": [
+     "IMAGE"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "WanFunControlToVideo": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 480,
+      "min": 16,
+      "step": 16
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 81,
+      "min": 1,
+      "step": 4
+     }
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "vae": [
+     "VAE"
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 832,
+      "min": 16,
+      "step": 16
+     }
+    ]
+   },
+   "optional": {
+    "clip_vision_output": [
+     "CLIP_VISION_OUTPUT"
+    ],
+    "control_video": [
+     "IMAGE"
+    ],
+    "start_image": [
+     "IMAGE"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "WanFunInpaintToVideo": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 480,
+      "min": 16,
+      "step": 16
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 81,
+      "min": 1,
+      "step": 4
+     }
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "vae": [
+     "VAE"
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 832,
+      "min": 16,
+      "step": 16
+     }
+    ]
+   },
+   "optional": {
+    "clip_vision_output": [
+     "CLIP_VISION_OUTPUT"
+    ],
+    "end_image": [
+     "IMAGE"
+    ],
+    "start_image": [
+     "IMAGE"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "WanImageToVideo": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 480,
+      "min": 16,
+      "step": 16
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 81,
+      "min": 1,
+      "step": 4
+     }
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "vae": [
+     "VAE"
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 832,
+      "min": 16,
+      "step": 16
+     }
+    ]
+   },
+   "optional": {
+    "clip_vision_output": [
+     "CLIP_VISION_OUTPUT"
+    ],
+    "ref_pad_image": [
+     "IMAGE"
+    ],
+    "start_image": [
+     "IMAGE"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "WanVaceToVideo": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 480,
+      "min": 16,
+      "step": 16
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 81,
+      "min": 1,
+      "step": 4
+     }
+    ],
+    "negative": [
+     "CONDITIONING"
+    ],
+    "positive": [
+     "CONDITIONING"
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1000.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "vae": [
+     "VAE"
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 832,
+      "min": 16,
+      "step": 16
+     }
+    ]
+   },
+   "optional": {
+    "control_masks": [
+     "MASK"
+    ],
+    "control_video": [
+     "IMAGE"
+    ],
+    "reference_image": [
+     "IMAGE"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT",
+   "INT"
+  ],
+  "output_name": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT",
+   "INT"
+  ]
+ },
+ "unCLIPConditioning": {
+  "input": {
+   "required": {
+    "clip_vision_output": [
+     "CLIP_VISION_OUTPUT"
+    ],
+    "conditioning": [
+     "CONDITIONING"
+    ],
+    "noise_augmentation": [
+     "FLOAT",
+     {
+      "default": 0.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 10.0,
+      "min": -10.0,
+      "step": 0.01
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ]
+ }
+}

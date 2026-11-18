@@ -1,0 +1,404 @@
+// Prompt composer: the text box every generation starts from, plus the
+// attachments dropped onto it and the presets saved against a tab.
+//
+// Attachments are uploaded into the engine input folder on drop
+// (POST /api/upload) and stored on the form as {name, kind, url}, so a
+// generation can pick them again from any of the media dropdowns.
+
+import { state, TOPICS } from './state.js';
+import { api } from './api.js';
+import { icon } from './icons.js';
+import { toast, menu, modal, lightbox, promptDialog } from './components.js';
+import { el, clear, debounce, fileName, baseName, mediaKind, mediaUrl, copyText } from './util.js';
+
+const mounted = new Map();
+
+const PLACEHOLDERS = {
+  image: 'Describe the image. Use __wildcards__ for random lists, (word:1.2) to weight a token, '
+    + 'and drop a picture here to condition on it.',
+  video: 'Describe the shot: subject, motion, camera, lighting. Drop an image or a video here for '
+    + 'image-to-video, video-to-video or reference work.',
+  music: 'Style and feel of the track. Lyrics go in the Lyrics field of the Song section.',
+};
+
+/** Rough CLIP-ish token count: commas and words, ignoring weighting syntax. */
+export function tokenCount(text) {
+  if (!text) return 0;
+  const cleaned = text.replace(/[()]/g, ' ').replace(/:\s*-?\d*\.?\d+/g, ' ');
+  return cleaned.split(/[,\n]+/).reduce((total, chunk) => total
+    + chunk.split(/\s+/).filter(Boolean).length, 0);
+}
+
+export function insertIntoPrompt(kind, text, { target = 'prompt' } = {}) {
+  const composer = mounted.get(kind);
+  if (!composer) return;
+  composer.insert(text, target);
+}
+
+export class Composer {
+  constructor(root, kind) {
+    this.root = root;
+    this.kind = kind;
+    this.negativeOpen = false;
+    mounted.set(kind, this);
+    this.render();
+    this._onForm = (changed) => {
+      if (changed && changed !== kind) return;
+      this.syncValues();
+    };
+    state.on(TOPICS.form, this._onForm);
+  }
+
+  get form() { return state.form(this.kind); }
+
+  /**
+   * Push the live textarea text into the form state.
+   *
+   * The input handler is debounced, so a click or Enter right after typing
+   * would otherwise generate with the previous prompt.
+   */
+  flush() {
+    if (this.promptBox) state.setFormValue(this.kind, 'prompt', this.promptBox.value);
+    if (this.negativeBox) state.setFormValue(this.kind, 'negative', this.negativeBox.value);
+  }
+
+  insert(text, target = 'prompt') {
+    const box = this[target === 'negative' ? 'negativeBox' : 'promptBox'];
+    if (!box) return;
+    const start = box.selectionStart ?? box.value.length;
+    const end = box.selectionEnd ?? start;
+    const before = box.value.slice(0, start);
+    const after = box.value.slice(end);
+    const glue = before && !/[\s(,]$/.test(before) ? ' ' : '';
+    box.value = `${before}${glue}${text}${after}`;
+    box.focus();
+    const caret = start + glue.length + text.length;
+    box.setSelectionRange(caret, caret);
+    state.setFormValue(this.kind, target === 'negative' ? 'negative' : 'prompt', box.value);
+    this.updateMeta();
+  }
+
+  render() {
+    clear(this.root);
+    this.root.className = 'composer';
+
+    this.box = el('div', { class: 'composer-box' });
+    this.promptBox = el('textarea', {
+      class: 'composer-input',
+      placeholder: PLACEHOLDERS[this.kind] || PLACEHOLDERS.image,
+      spellcheck: 'false',
+      rows: this.kind === 'music' ? 4 : 5,
+      dataset: { field: 'prompt' },
+      oninput: debounce((event) => {
+        state.setFormValue(this.kind, 'prompt', event.target.value);
+        this.updateMeta();
+      }, 220),
+    });
+    this.promptBox.value = this.form.prompt || state.formValue(this.kind, 'prompt') || '';
+
+    this.negativeBox = el('textarea', {
+      class: 'composer-input composer-neg',
+      placeholder: 'Negative prompt: what to keep out of the frame.',
+      spellcheck: 'false',
+      rows: 2,
+      dataset: { field: 'negative' },
+      oninput: debounce((event) => {
+        state.setFormValue(this.kind, 'negative', event.target.value);
+        this.updateMeta();
+      }, 220),
+    });
+    this.negativeBox.value = state.formValue(this.kind, 'negative') || '';
+
+    this.attachStrip = el('div', { class: 'attach-strip' });
+    this.renderAttachments();
+
+    this.box.appendChild(this.promptBox);
+    this.box.appendChild(this.attachStrip);
+    this.box.appendChild(el('div', {
+      class: 'drop-hint',
+      text: 'Drop an image, video or audio file to attach it',
+    }));
+
+    this.root.appendChild(this.box);
+    this.root.appendChild(this.renderFoot());
+
+    this.wireDrop(this.box);
+    this.updateMeta();
+  }
+
+  renderFoot() {
+    const tool = (name, title, run, extraClass = '') => el('button', {
+      class: `icon-btn ${extraClass}`,
+      html: icon(name, 14), title, 'aria-label': title, onclick: run,
+    });
+
+    const meta = el('div', { class: 'composer-meta' });
+    this.metaNode = meta;
+
+    const row = el('div', { class: 'composer-foot' }, [
+      meta,
+      el('div', { class: 'grow' }),
+      tool(this.kind === 'music' ? 'wave' : 'shuffle', 'Insert a wildcard', () => this.pickWildcard()),
+      tool('dice', 'Randomise the seed', () => {
+        const seed = Math.floor(Math.random() * 4294967295);
+        state.setForm(this.kind, { seed, random_seed: true });
+        toast(`Seed ${seed}`, { kind: 'info', timeout: 1400 });
+      }),
+      tool(this.negativeOpen ? 'chevron_up' : 'chevron_down', 'Negative prompt', () => {
+        this.negativeOpen = !this.negativeOpen;
+        this.render();
+      }),
+      tool('expand', 'Open the large editor', () => this.openBigEditor()),
+      tool('branch', 'Presets', (event) => this.openPresets(event.currentTarget)),
+      tool('copy', 'Copy the prompt', () => {
+        copyText(this.promptBox.value).then(() => toast('Prompt copied', { kind: 'ok', timeout: 1200 }));
+      }),
+    ]);
+    if (this.negativeOpen) this.promptBox.after(this.negativeBox);
+    return row;
+  }
+
+  updateMeta() {
+    if (!this.metaNode) return;
+    const tokens = tokenCount(this.promptBox.value);
+    const negative = this.negativeOpen ? tokenCount(this.negativeBox.value) : 0;
+    const attachments = (this.form.attachments || []).length;
+    clear(this.metaNode);
+    this.metaNode.appendChild(el('span', { text: `${tokens} tok` }));
+    if (negative) this.metaNode.appendChild(el('span', { text: `· ${negative} neg` }));
+    if (attachments) this.metaNode.appendChild(el('span', { text: `· ${attachments} attached` }));
+    const wildcards = (state.wildcards || []).length;
+    if (wildcards) this.metaNode.appendChild(el('span', { text: `· ${wildcards} wildcards` }));
+  }
+
+  syncValues() {
+    const prompt = state.formValue(this.kind, 'prompt') || '';
+    const negative = state.formValue(this.kind, 'negative') || '';
+    if (this.promptBox && document.activeElement !== this.promptBox && this.promptBox.value !== prompt) {
+      this.promptBox.value = prompt;
+    }
+    if (this.negativeBox && document.activeElement !== this.negativeBox
+      && this.negativeBox.value !== negative) {
+      this.negativeBox.value = negative;
+    }
+    this.renderAttachments();
+    this.updateMeta();
+  }
+
+  // Attachments ------------------------------------------------------------
+  renderAttachments() {
+    if (!this.attachStrip) return;
+    clear(this.attachStrip);
+    const items = this.form.attachments || [];
+    for (const [index, item] of items.entries()) {
+      const url = item.url || '';
+      const kind = item.kind || mediaKind(item.name || '');
+      const thumb = kind === 'video'
+        ? el('video', { src: url, muted: true, playsinline: true })
+        : (kind === 'image' ? el('img', { src: url, alt: '' })
+          : el('span', { class: 'kind', html: icon(kind === 'audio' ? 'mic' : 'file', 12) }));
+      this.attachStrip.appendChild(el('div', {
+        class: 'attach',
+        title: `${item.name} — click to use as the source ${kind}`,
+        onclick: (event) => this.attachmentMenu(event, item, index),
+      }, [thumb, el('span', {
+        class: 'x', html: icon('x', 10),
+        onclick: (event) => {
+          event.stopPropagation();
+          this.setAttachments(items.filter((_, i) => i !== index));
+        },
+      })]));
+    }
+    this.updateMeta();
+  }
+
+  setAttachments(items) {
+    state.setFormValue(this.kind, 'attachments', items);
+    this.renderAttachments();
+  }
+
+  attachmentMenu(anchor, item, index) {
+    const kind = item.kind || mediaKind(item.name || '');
+    const items = [];
+    if (kind === 'image') {
+      items.push({ label: 'Use as initial image', icon: 'image', run: () => state.setForm(this.kind, { init_image: item.name }) });
+      items.push({ label: 'Use as first frame', icon: 'frame', run: () => state.setForm(this.kind, { source_image: item.name }) });
+      items.push({ label: 'Use as last frame', icon: 'frame', run: () => state.setForm(this.kind, { last_frame: item.name }) });
+      items.push({ label: 'Use as mask', icon: 'mask', run: () => state.setForm(this.kind, { mask_image: item.name }) });
+    }
+    if (kind === 'video') {
+      items.push({ label: 'Use as source video', icon: 'video', run: () => state.setForm(this.kind, { source_video: item.name }) });
+      items.push({ label: 'Use as control video', icon: 'branch', run: () => state.setForm(this.kind, { control_video: item.name }) });
+    }
+    if (kind === 'audio') {
+      items.push({ label: 'Use as driving audio', icon: 'mic', run: () => state.setForm(this.kind, { driving_audio: item.name }) });
+    }
+    items.push({ sep: true });
+    items.push({ label: 'Open preview', icon: 'external', run: () => this.preview(item) });
+    items.push({ label: 'Remove', icon: 'trash', danger: true, run: () => {
+      this.setAttachments((this.form.attachments || []).filter((_, i) => i !== index));
+    } });
+    menu(anchor, items);
+  }
+
+  preview(item) {
+    lightbox({
+      title: baseName(item.name), url: item.url,
+      kind: item.kind || mediaKind(item.name || ''),
+    });
+  }
+
+  wireDrop(node) {
+    const hasFiles = (event) => Array.from(event.dataTransfer ? event.dataTransfer.types : []).includes('Files');
+    node.addEventListener('dragenter', (event) => { if (hasFiles(event)) { event.preventDefault(); this.box.classList.add('drag'); } });
+    node.addEventListener('dragover', (event) => { if (hasFiles(event)) { event.preventDefault(); this.box.classList.add('drag'); } });
+    node.addEventListener('dragleave', (event) => {
+      if (!node.contains(event.relatedTarget)) this.box.classList.remove('drag');
+    });
+    node.addEventListener('drop', async (event) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      this.box.classList.remove('drag');
+      const files = Array.from(event.dataTransfer.files);
+      for (const file of files) {
+        try {
+          const data = await api.upload(file, { category: 'input' });
+          const attachment = {
+            name: data.file.name,
+            kind: data.file.kind || mediaKind(file.name),
+            url: data.file.url || '',
+            size: file.size,
+          };
+          const items = (this.form.attachments || []).slice();
+          items.push(attachment);
+          this.setAttachments(items);
+          await this.refreshMedia();
+          this.autoWire(attachment);
+          toast(`Attached ${file.name}`, { kind: 'ok', timeout: 2200 });
+        } catch (err) {
+          toast(`${file.name}: ${err.message}`, { kind: 'err', timeout: 6000 });
+        }
+      }
+    });
+  }
+
+  /** Put a freshly dropped file into the field the current tab cares about. */
+  autoWire(attachment) {
+    const kind = attachment.kind;
+    const patch = {};
+    if (this.kind === 'image') {
+      if (kind === 'image' && !state.formValue('image', 'init_image')) patch.init_image = attachment.name;
+      if (kind === 'image' && /mask/i.test(attachment.name)) patch.mask_image = attachment.name;
+    } else if (this.kind === 'video') {
+      const mode = state.formValue('video', 'mode');
+      if (kind === 'image') {
+        if (mode === 'flf2v' && !state.formValue('video', 'last_frame')) patch.last_frame = attachment.name;
+        else if (!state.formValue('video', 'source_image')) patch.source_image = attachment.name;
+      }
+      if (kind === 'video' && !state.formValue('video', 'source_video')) patch.source_video = attachment.name;
+      if (kind === 'audio' && !state.formValue('video', 'driving_audio')) patch.driving_audio = attachment.name;
+    }
+    if (Object.keys(patch).length) state.setForm(this.kind, patch);
+  }
+
+  async refreshMedia() {
+    try {
+      const data = await api.models();
+      state.setModels(data);
+    } catch (err) { /* the next snapshot picks it up */ }
+  }
+
+  // Wildcards --------------------------------------------------------------
+  async pickWildcard() {
+    let entries = state.wildcards || [];
+    if (!entries.length) {
+      try {
+        const data = await api.wildcards();
+        state.setWildcards(data.entries || [], data.folders || []);
+        entries = data.entries || [];
+      } catch (err) { /* ignore */ }
+    }
+    if (!entries.length) {
+      toast('No wildcard lists yet. Add them in the Assets tab.', { kind: 'warn' });
+      return;
+    }
+    const anchor = this.root.querySelector('.icon-btn');
+    menu(anchor, entries.slice(0, 60).map((entry) => ({
+      label: entry.name || entry,
+      hint: entry.count ? `${entry.count} values` : '',
+      run: () => this.insert(`__${entry.name || entry}__`),
+    })), { align: 'left' });
+  }
+
+  // Big editor -------------------------------------------------------------
+  openBigEditor() {
+    const body = el('div', { class: 'col', style: { gap: '10px' } });
+    const prompt = el('textarea', { class: 'textarea', rows: 12, spellcheck: 'false' });
+    prompt.value = this.promptBox.value;
+    const negative = el('textarea', { class: 'textarea', rows: 5, spellcheck: 'false' });
+    negative.value = this.negativeBox.value;
+    body.appendChild(el('div', { class: 'sub-label', text: 'Prompt' }));
+    body.appendChild(prompt);
+    body.appendChild(el('div', { class: 'sub-label', text: 'Negative prompt' }));
+    body.appendChild(negative);
+    modal({
+      title: 'Prompt editor',
+      icon: 'wand',
+      width: 760,
+      body,
+      actions: [{
+        label: 'Apply', kind: 'primary', run: (close) => {
+          state.setForm(this.kind, { prompt: prompt.value, negative: negative.value });
+          this.render();
+          close();
+        },
+      }],
+    });
+  }
+
+  // Presets ----------------------------------------------------------------
+  async openPresets(anchor) {
+    let presets = state.presets || [];
+    try {
+      const data = await api.presets(this.kind);
+      presets = data.presets || [];
+      state.presets = presets;
+      state.emit(TOPICS.presets);
+    } catch (err) { /* keep whatever we have */ }
+    const items = presets.filter((preset) => !preset.kind || preset.kind === this.kind)
+      .map((preset) => ({
+        label: preset.name,
+        hint: preset.label || '',
+        run: () => this.applyPreset(preset),
+      }));
+    items.push({ sep: true });
+    items.push({
+      label: 'Save the current form as a preset', icon: 'save',
+      run: () => this.savePreset(),
+    });
+    if (!items.length) items.push({ label: 'No presets for this tab yet', disabled: true });
+    menu(anchor, items);
+  }
+
+  async savePreset() {
+    const name = await promptDialog({
+      title: 'Save preset', label: 'Preset name', placeholder: 'Cinematic look',
+    });
+    if (!name) return;
+    try {
+      await api.savePreset(name, this.kind, state.form(this.kind), '');
+      toast(`Preset "${name}" saved`, { kind: 'ok' });
+      const data = await api.presets();
+      state.presets = data.presets || [];
+      state.emit(TOPICS.presets);
+    } catch (err) {
+      toast(err.message, { kind: 'err' });
+    }
+  }
+
+  applyPreset(preset) {
+    state.loadForm(this.kind, preset.params || {});
+    this.render();
+    toast(`Preset "${preset.name}" loaded`, { kind: 'ok', timeout: 1800 });
+  }
+}

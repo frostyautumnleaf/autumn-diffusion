@@ -1,0 +1,16 @@
+# Dashboard dependencies. Installed into ./.venv by install.sh, never system-wide.
+# ComfyUI and YuE bring their own requirements and are installed separately by
+# the installer into the same virtual environment (ComfyUI) and a second one
+# (.venv-music) for YuE, whose pins clash with ComfyUI's.
+
+# HTTP server, client and websocket hub
+aiohttp>=3.9
+
+# Thumbnails, preview frames, waveform thumbnails
+Pillow>=10
+
+# Version comparison for the ComfyUI update check
+packaging>=23
+
+# Optional: faster PNG decoding for large history thumbs
+# numpy>=1.26

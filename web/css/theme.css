@@ -1,0 +1,224 @@
+/* Design tokens, base typography and the motion system.
+   Dark is the default; [data-theme="light"] overrides the palette only. */
+
+:root {
+  color-scheme: dark;
+
+  --bg-0: #07080a;
+  --bg-1: #0b0d11;
+  --bg-2: #101318;
+  --bg-3: #161a21;
+  --bg-4: #1d222b;
+  --bg-hover: #232935;
+  --line: #232935;
+  --line-soft: #1a1f27;
+  --line-strong: #303848;
+
+  --text: #e8ebf1;
+  --text-dim: #a8b1c1;
+  --text-mute: #6f7a8c;
+  --text-faint: #4c5566;
+
+  --accent: #f0a24b;
+  --accent-soft: rgba(240, 162, 75, 0.14);
+  --accent-line: rgba(240, 162, 75, 0.42);
+  --accent-ink: #1a1206;
+  --accent-glow: rgba(240, 162, 75, 0.28);
+
+  --ok: #4ade80;
+  --ok-soft: rgba(74, 222, 128, 0.13);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.13);
+  --err: #f87171;
+  --err-soft: rgba(248, 113, 113, 0.13);
+  --info: #60a5fa;
+  --info-soft: rgba(96, 165, 250, 0.13);
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow: 0 10px 26px -12px rgba(0, 0, 0, 0.75);
+  --shadow-lg: 0 28px 60px -20px rgba(0, 0, 0, 0.85);
+
+  --font: "Inter", "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, Menlo, monospace;
+
+  --ease: cubic-bezier(0.22, 0.68, 0.35, 1);
+  --ease-out: cubic-bezier(0.16, 0.84, 0.3, 1);
+  --dur-fast: 110ms;
+  --dur: 190ms;
+  --dur-slow: 320ms;
+
+  --rail-w: 372px;
+  --side-w: 268px;
+  --history-h: 232px;
+  --topbar-h: 52px;
+}
+
+:root[data-accent="amber"] {
+  --accent: #f0a24b;
+  --accent-soft: rgba(240, 162, 75, 0.14);
+  --accent-line: rgba(240, 162, 75, 0.42);
+  --accent-ink: #1a1206;
+  --accent-glow: rgba(240, 162, 75, 0.28);
+}
+
+:root[data-accent="ember"] {
+  --accent: #ef6d48;
+  --accent-soft: rgba(239, 109, 72, 0.14);
+  --accent-line: rgba(239, 109, 72, 0.42);
+  --accent-ink: #1b0c07;
+  --accent-glow: rgba(239, 109, 72, 0.3);
+}
+
+:root[data-accent="moss"] {
+  --accent: #7cc47f;
+  --accent-soft: rgba(124, 196, 127, 0.13);
+  --accent-line: rgba(124, 196, 127, 0.4);
+  --accent-ink: #071a0b;
+  --accent-glow: rgba(124, 196, 127, 0.24);
+}
+
+:root[data-accent="violet"] {
+  --accent: #a78bfa;
+  --accent-soft: rgba(167, 139, 250, 0.14);
+  --accent-line: rgba(167, 139, 250, 0.42);
+  --accent-ink: #120b21;
+  --accent-glow: rgba(167, 139, 250, 0.26);
+}
+
+:root[data-accent="cyan"] {
+  --accent: #5cc8d7;
+  --accent-soft: rgba(92, 200, 215, 0.13);
+  --accent-line: rgba(92, 200, 215, 0.4);
+  --accent-ink: #04161a;
+  --accent-glow: rgba(92, 200, 215, 0.24);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-0: #eceef2;
+  --bg-1: #f6f7f9;
+  --bg-2: #ffffff;
+  --bg-3: #f1f3f6;
+  --bg-4: #e7eaef;
+  --bg-hover: #dfe3ea;
+  --line: #d7dbe3;
+  --line-soft: #e4e7ed;
+  --line-strong: #c3c9d4;
+
+  --text: #14171d;
+  --text-dim: #49515f;
+  --text-mute: #6b7484;
+  --text-faint: #98a1b0;
+
+  --shadow-sm: 0 1px 2px rgba(16, 20, 28, 0.09);
+  --shadow: 0 12px 28px -14px rgba(16, 20, 28, 0.28);
+  --shadow-lg: 0 26px 56px -22px rgba(16, 20, 28, 0.32);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+button, input, textarea, select {
+  font: inherit;
+  color: inherit;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+::selection { background: var(--accent-soft); color: var(--text); }
+
+:focus-visible {
+  outline: 1px solid var(--accent-line);
+  outline-offset: 1px;
+}
+
+/* Scrollbars ------------------------------------------------------------- */
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-faint); background-clip: content-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* Motion system ----------------------------------------------------------
+   Panels fade+slide in once; icons animate on hover only. Everything is
+   disabled when the user asks for reduced motion. */
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop-in {
+  0% { opacity: 0; transform: scale(0.96); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes slide-left {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+@keyframes shimmer {
+  from { background-position: -180% 0; }
+  to { background-position: 180% 0; }
+}
+@keyframes bar-stripe {
+  from { background-position: 0 0; }
+  to { background-position: 28px 0; }
+}
+
+.anim-up { animation: fade-up var(--dur-slow) var(--ease-out) both; }
+.anim-in { animation: fade-in var(--dur) var(--ease) both; }
+.anim-pop { animation: pop-in var(--dur) var(--ease-out) both; }
+.anim-slide { animation: slide-left var(--dur-slow) var(--ease-out) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+body[data-reduced-motion="1"] *,
+body[data-reduced-motion="1"] *::before,
+body[data-reduced-motion="1"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
