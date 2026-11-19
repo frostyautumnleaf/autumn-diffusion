@@ -38,6 +38,7 @@ from typing import Any, Callable
 PROTOCOL = 1
 SAMPLE_RATE = 48000                       # YuE2's VAE decodes to 48 kHz stereo
 PEAK_BUCKETS_PER_SECOND = 25
+LIVE_PEAK_LIMIT = 20000                   # bucket ceiling per tile: never rescale a tile
 SEMANTIC_TOKENS_PER_SECOND = 25           # one semantic token is one latent frame
 
 _EMIT_LOCK = threading.Lock()
@@ -189,7 +190,7 @@ class Backend:
         started = time.time()
         if self.stub:
             self.pipeline = StubPipeline(params)
-            self.pipeline._sink = _stub_sink
+            self.pipeline._sink = self._stub_sink
         else:
             from yue2 import YuE2Pipeline  # type: ignore
 
@@ -233,12 +234,50 @@ class Backend:
         self.model_key = ""
 
     # ------------------------------------------------------------- generate
+    def _stub_sink(self, start: int, end: int, piece: Any) -> None:
+        """Stub decode callback: stream the tile and extend the live audio file."""
+        _emit_audio_chunk(piece, start / SAMPLE_RATE, live=getattr(self, "_live", None))
+
+    def _open_live(self, job_id: str, params: dict[str, Any]) -> Any:
+        """Start the growing WAV the browser plays while the track decodes.
+
+        Returns ``None`` when the setting is off or the file cannot be created;
+        the live waveform then still works, only the early listening is missing.
+        """
+        old = getattr(self, "_live", None)
+        if old is not None:
+            old.remove()
+        self._live = None
+        wanted = params.get("_live_preview", params.get("live_preview", True))
+        if not bool(wanted):
+            return None
+        try:
+            from autumn.paths import LAYOUT
+
+            configured = os.environ.get("AUTUMN_LIVE_DIR", "")
+            live_dir = Path(configured) if configured else LAYOUT.cache_dir / "live"
+            _LiveWriter.prune(live_dir)
+            writer = _LiveWriter(live_dir / f"{_safe_id(job_id)}.wav")
+        except Exception as exc:  # noqa: BLE001 - live audio is a nice-to-have
+            log_line(f"live audio disabled ({exc})")
+            return None
+        self._live = writer if writer.enabled else None
+        return self._live
+
+    def _close_live(self) -> None:
+        """Drop the live WAV once the real output file exists."""
+        writer = getattr(self, "_live", None)
+        if writer is not None:
+            writer.remove()
+        self._live = None
+
     def generate(self, job_id: str, params: dict[str, Any], output_dir: Path,
                  *, cancelled: Callable[[], bool],
                  progress: Callable[[str, int, int, float], None]) -> dict[str, Any]:
         self.load(params)
         output_dir.mkdir(parents=True, exist_ok=True)
         started = time.time()
+        self._open_live(job_id, params)
         request = self._request(params, job_id)
         abc_sampling = _sampling(params.get("abc_sampling"))
         semantic_sampling = _sampling(params.get("semantic_sampling"))
@@ -261,6 +300,7 @@ class Backend:
         audio, sample_rate = self._decode(latents, cancelled, progress, output_dir)
 
         files = self._write(output_dir, audio, sample_rate, request, params, started)
+        self._close_live()
         return files
 
     # ----------------------------------------------------------- stage calls
@@ -385,7 +425,8 @@ class Backend:
 
             def emit_slice(start: int, end: int) -> None:
                 piece = audio[..., start:end].clamp(-1.0, 1.0)
-                _emit_audio_chunk(piece.numpy(), start / SAMPLE_RATE)
+                _emit_audio_chunk(piece.numpy(), start / SAMPLE_RATE,
+                                  live=getattr(self, "_live", None))
 
             for index, start in enumerate(range(0, frames, core)):
                 if cancelled():
@@ -500,9 +541,131 @@ def _write_wav_numpy(path: Path, array: Any, sample_rate: int) -> None:
     path.write_bytes(header + data)
 
 
+class _LiveWriter:
+    """Append decoded tiles to a growing WAV file the browser can already play.
+
+    The RIFF header is rewritten after every tile, so the file is a valid WAV at
+    any instant and the player can seek anywhere up to the decode edge. It lives
+    in the cache and is removed once the finished track is written.
+    """
+
+    def __init__(self, path: Path, sample_rate: int = SAMPLE_RATE, channels: int = 2) -> None:
+        self.path = Path(path)
+        self.sample_rate = int(sample_rate)
+        self.channels = max(1, int(channels))
+        self.frames = 0
+        self.revision = 0
+        self.enabled = True
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.open("wb") as handle:
+                handle.write(_wav_header(0, self.sample_rate, self.channels))
+        except OSError as exc:
+            log_line(f"live audio disabled ({exc})")
+            self.enabled = False
+
+    @property
+    def url(self) -> str:
+        from urllib.parse import quote
+
+        from autumn.paths import PROGRAM_DIR
+
+        try:
+            relative = self.path.resolve().relative_to(PROGRAM_DIR.resolve())
+        except (ValueError, OSError):
+            relative = Path(self.path.name)
+        return f"/file?path={quote(str(relative))}"
+
+    def seconds(self) -> float:
+        return self.frames / float(self.sample_rate) if self.sample_rate else 0.0
+
+    def append(self, array: Any) -> int:
+        """Append one decoded tile as 16 bit PCM and refresh the header."""
+        import numpy as np
+
+        if not self.enabled:
+            return 0
+        data = np.asarray(array, dtype=np.float32)
+        if data.ndim == 1:
+            data = data[:, None]
+        if data.shape[0] < data.shape[1] and data.shape[0] in (1, 2):
+            data = data.T
+        if data.shape[1] != self.channels:
+            if data.shape[1] == 1:
+                data = np.repeat(data, self.channels, axis=1)
+            else:
+                data = data[:, :self.channels]
+        pcm = (np.clip(data, -1.0, 1.0) * 32767.0).astype("<i2")
+        try:
+            with self.path.open("r+b") as handle:
+                handle.seek(44 + self.frames * self.channels * 2)
+                handle.write(pcm.tobytes())
+                handle.flush()
+            self.frames += int(pcm.shape[0])
+            self.revision += 1
+            with self.path.open("r+b") as handle:
+                handle.seek(0)
+                handle.write(_wav_header(self.frames, self.sample_rate, self.channels))
+        except OSError as exc:
+            self.enabled = False
+            log_line(f"live audio stopped ({exc})")
+            return 0
+        return int(pcm.shape[0])
+
+    def remove(self) -> None:
+        try:
+            if self.path.exists():
+                self.path.unlink()
+        except OSError:
+            pass
+        self.enabled = False
+
+    @classmethod
+    def prune(cls, directory: Path, max_age_seconds: int = 6 * 3600) -> int:
+        """Delete leftover live files from runs that were killed part way."""
+        removed = 0
+        cutoff = time.time() - max_age_seconds
+        try:
+            for entry in directory.glob("*.wav"):
+                try:
+                    if entry.stat().st_mtime < cutoff:
+                        entry.unlink()
+                        removed += 1
+                except OSError:
+                    continue
+        except OSError:
+            return 0
+        return removed
+
+
+def _wav_header(frames: int, sample_rate: int, channels: int) -> bytes:
+    """44 byte WAV header for ``frames`` frames of 16 bit PCM."""
+    import struct
+
+    data_bytes = int(frames) * int(channels) * 2
+    byte_rate = int(sample_rate) * int(channels) * 2
+    header = b"RIFF" + struct.pack("<I", 36 + data_bytes) + b"WAVEfmt "
+    header += struct.pack("<IHHIIHH", 16, 1, int(channels), int(sample_rate), byte_rate,
+                          int(channels) * 2, 16)
+    header += b"data" + struct.pack("<I", data_bytes)
+    return header
+
+
 def compute_peaks(array: Any, sample_rate: int, buckets_per_second: int = PEAK_BUCKETS_PER_SECOND,
                   limit: int = 6000) -> list[float]:
     """Peak envelope as floats in ``[-1, 1]`` for the waveform canvas."""
+    return peaks_with_rate(array, sample_rate, buckets_per_second, limit)[0]
+
+
+def peaks_with_rate(array: Any, sample_rate: int,
+                    buckets_per_second: int = PEAK_BUCKETS_PER_SECOND,
+                    limit: int = 6000) -> tuple[list[float], float]:
+    """Peak envelope plus the bucket rate it actually ended up at.
+
+    ``limit`` can force a coarser envelope than asked for on a long slice; the
+    caller has to know the rate it got, otherwise the browser places the peaks on
+    the wrong grid and the waveform shows holes.
+    """
     import numpy as np
 
     data = np.asarray(array, dtype=np.float32)
@@ -511,7 +674,7 @@ def compute_peaks(array: Any, sample_rate: int, buckets_per_second: int = PEAK_B
     mono = data.mean(axis=1)
     total = mono.shape[0]
     if total == 0:
-        return []
+        return [], float(buckets_per_second)
     buckets = max(1, int(total / sample_rate * buckets_per_second))
     if buckets > limit:
         buckets = limit
@@ -525,16 +688,20 @@ def compute_peaks(array: Any, sample_rate: int, buckets_per_second: int = PEAK_B
     top = float(peaks.max()) if peaks.size else 0.0
     if top > 0:
         peaks = peaks / top
-    return [round(float(p), 4) for p in peaks]
+    actual = (buckets * float(sample_rate)) / max(1, window * buckets)
+    return [round(float(p), 4) for p in peaks], round(actual, 4)
 
 
-def _stub_sink(start: int, end: int, piece: Any) -> None:
-    """Stream each stub decode tile as an ``audio`` event, like the real VAE path."""
-    _emit_audio_chunk(piece, start / SAMPLE_RATE)
+def _emit_audio_chunk(piece: Any, start: float, live: Any = None) -> None:
+    """Push the peak envelope of a freshly decoded tile (no PCM over the wire).
 
+    Every tile is bucketed at ``PEAK_BUCKETS_PER_SECOND``: if one tile were
+    rescaled to fit a bucket limit it would land on the wrong grid in the browser
+    and the drawn waveform would show holes where audio exists.
 
-def _emit_audio_chunk(piece: Any, start: float) -> None:
-    """Push the peak envelope of a freshly decoded tile (no PCM over the wire)."""
+    When ``live`` is given the tile is also appended to the growing WAV file the
+    browser plays, so the part that has already decoded can be listened to.
+    """
     import numpy as np
 
     array = np.asarray(piece, dtype=np.float32)
@@ -544,13 +711,21 @@ def _emit_audio_chunk(piece: Any, start: float) -> None:
         array = array[:, None]
     if array.shape[0] < array.shape[1]:
         array = array.T
-    emit({
+    if live is not None:
+        live.append(array)
+    payload = {
         "event": "audio",
         "start": round(float(start), 3),
         "duration": round(array.shape[0] / float(SAMPLE_RATE), 3),
         "sample_rate": SAMPLE_RATE,
-        "peaks": compute_peaks(array, SAMPLE_RATE, 50, 900),
-    })
+        "peaks": compute_peaks(array, SAMPLE_RATE, PEAK_BUCKETS_PER_SECOND, LIVE_PEAK_LIMIT),
+        "peaks_per_second": PEAK_BUCKETS_PER_SECOND,
+    }
+    if live is not None and live.enabled:
+        payload["url"] = live.url
+        payload["revision"] = live.revision
+        payload["buffered"] = round(live.seconds(), 3)
+    emit(payload)
 
 
 def _sampling(value: Any) -> Any:

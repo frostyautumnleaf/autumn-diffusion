@@ -151,8 +151,14 @@ export function promptDialog({ title = 'Input', label = '', value = '', placehol
 }
 
 // Context menu -------------------------------------------------------------
-/** Open a menu anchored to an element. items: [{label, icon, run, danger, disabled} | {sep:true} | {label:'', group:true}] */
-export function menu(anchor, items, { align = 'right', offset = 4 } = {}) {
+/**
+ * Open a menu, either anchored to an element or at a point on the screen.
+ *
+ * items: [{label, icon, run, hint, danger, disabled} | {sep:true} | {label, group:true}]
+ * Options: `align` ('left' | 'right'), `offset`, and `at: {x, y}` to place the
+ * menu under the pointer, which is what a right-click menu wants.
+ */
+export function menu(anchor, items, { align = 'right', offset = 4, at = null } = {}) {
   closeMenu();
   const node = el('div', { class: 'popover menu' });
   for (const item of items) {
@@ -169,13 +175,20 @@ export function menu(anchor, items, { align = 'right', offset = 4 } = {}) {
     ]));
   }
   document.body.appendChild(node);
-  const rect = anchor.getBoundingClientRect();
   const menuRect = node.getBoundingClientRect();
-  let left = align === 'right' ? rect.right - menuRect.width : rect.left;
-  left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
-  let top = rect.bottom + offset;
-  if (top + menuRect.height > window.innerHeight - 8) {
-    top = Math.max(8, rect.top - menuRect.height - offset);
+  let left;
+  let top;
+  if (at) {
+    left = Math.max(8, Math.min(at.x, window.innerWidth - menuRect.width - 8));
+    top = Math.max(8, Math.min(at.y, window.innerHeight - menuRect.height - 8));
+  } else {
+    const rect = anchor.getBoundingClientRect();
+    left = align === 'right' ? rect.right - menuRect.width : rect.left;
+    left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
+    top = rect.bottom + offset;
+    if (top + menuRect.height > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - menuRect.height - offset);
+    }
   }
   node.style.left = `${left}px`;
   node.style.top = `${top}px`;
@@ -203,22 +216,49 @@ export function closeMenu() {
 }
 
 // Tooltip ------------------------------------------------------------------
+//
+// A tooltip carries three parts: a title (usually the setting name), the
+// explanation, and an optional example. All three are optional, and a plain
+// string still works, so callers can be as terse as they like.
 let tipNode = null;
 
-export function attachTooltip(node, text) {
-  if (!text) return;
+/**
+ * Attach a hover tooltip to a node.
+ *
+ * `spec` is a string or `{ title, text, example }`. The native `title` attribute
+ * is cleared so the browser does not draw a second box.
+ */
+export function attachTooltip(node, spec) {
+  if (!spec) return;
+  const detail = normaliseTip(spec);
   node.setAttribute('title', '');
-  node.addEventListener('mouseenter', (event) => showTip(event.currentTarget, text));
+  node.addEventListener('mouseenter', (event) => showTip(event.currentTarget, detail));
   node.addEventListener('mouseleave', hideTip);
   node.addEventListener('click', hideTip);
 }
 
-export function showTip(anchor, text) {
+function normaliseTip(spec) {
+  if (typeof spec === 'string') return { text: spec };
+  return {
+    title: spec.title || '',
+    text: spec.text || spec.body || '',
+    example: spec.example || '',
+  };
+}
+
+export function showTip(anchor, spec) {
   hideTip();
-  tipNode = el('div', { class: 'popover tip', text });
+  const detail = normaliseTip(spec);
+  if (!detail.title && !detail.text && !detail.example) return;
+  tipNode = el('div', { class: 'popover tip rich' }, [
+    detail.title ? el('div', { class: 'tip-title', text: detail.title }) : null,
+    detail.text ? el('div', { class: 'tip-text', text: detail.text }) : null,
+    detail.example ? el('div', { class: 'tip-example' }, [
+      el('span', { class: 'tip-eg-label', text: 'Example' }),
+      el('code', { text: detail.example }),
+    ]) : null,
+  ]);
   tipNode.style.pointerEvents = 'none';
-  tipNode.style.padding = '4px 8px';
-  tipNode.style.fontSize = '11px';
   document.body.appendChild(tipNode);
   const rect = anchor.getBoundingClientRect();
   const tipRect = tipNode.getBoundingClientRect();
@@ -226,6 +266,9 @@ export function showTip(anchor, text) {
   left = Math.max(6, Math.min(left, window.innerWidth - tipRect.width - 6));
   let top = rect.top - tipRect.height - 6;
   if (top < 6) top = rect.bottom + 6;
+  if (top + tipRect.height > window.innerHeight - 6) {
+    top = Math.max(6, window.innerHeight - tipRect.height - 6);
+  }
   tipNode.style.left = `${left}px`;
   tipNode.style.top = `${top}px`;
 }

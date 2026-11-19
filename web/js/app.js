@@ -20,6 +20,7 @@ import { LogDrawer, engineEntry } from './logs.js';
 import { Assets } from './assets.js';
 import { SettingsView } from './settings.js';
 import { SetupWizard } from './setup.js';
+import { initVolume, mountVolumeControl } from './volume.js';
 import { el, clear, $, clamp, debounce, num, bytes, seconds, fileName } from './util.js';
 
 const TABS = [
@@ -81,6 +82,7 @@ class App {
     this.modelsLoaded = false;
 
     applyTheme();
+    initVolume();
     this.renderChrome();
     this.bindGlobalEvents();
     this.buildViews();
@@ -743,6 +745,7 @@ class App {
       dataset: data || {}, onclick: run,
     });
     host.append(
+      mountVolumeControl(),
       tool('refresh', 'Re-read models, nodes and versions', () => {
         this.refreshState().then(() => this.loadCatalog());
         toast('Catalog refreshed', { kind: 'ok', timeout: 1600 });

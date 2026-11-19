@@ -229,7 +229,7 @@ DEFAULTS: dict[str, Any] = {
         "open_browser": True,
         "confirm_deletes": True,
         "history_visible": True,
-        "history_height": 232,
+        "history_height": 250,
         "sidebar_visible": True,
         "compact_sections": False,
         "autosave_forms": True,

@@ -326,3 +326,55 @@ async def test_a_missing_music_module_can_be_installed_from_the_error(home, sett
     finally:
         await client.close()
         await context.close()
+
+
+async def test_files_are_served_with_range_and_conditional_support(home, settings):
+    """``<audio>``/``<video>`` only seek when the server answers 206.
+
+    Conditional requests matter just as much: the history strip reloads the same
+    thumbnails every refresh, and a 304 keeps that off the disk.
+    """
+    payload = bytes(range(256)) * 16
+    target = home.cache_dir / "ranged.wav"
+    target.write_bytes(payload)
+
+    client, context = await open_app(settings)
+    try:
+        params = {"path": "data/cache/ranged.wav"}
+        async with client.get("/file", params=params) as response:
+            assert response.status == 200
+            assert response.headers.get("Accept-Ranges") == "bytes"
+            assert len(await response.read()) == len(payload)
+            stamp = response.headers.get("Last-Modified", "")
+            assert stamp
+
+        async with client.get("/file", params=params,
+                              headers={"Range": "bytes=100-199"}) as response:
+            assert response.status == 206
+            assert response.headers.get("Content-Range") == f"bytes 100-199/{len(payload)}"
+            assert await response.read() == payload[100:200]
+
+        async with client.get("/file", params=params,
+                              headers={"Range": "bytes=-64"}) as response:
+            assert response.status == 206
+            assert await response.read() == payload[-64:]
+
+        async with client.get("/file", params=params,
+                              headers={"Range": "bytes=9000-"}) as response:
+            assert response.status == 416
+
+        assert stamp, "an unchanged file must answer 304"
+        async with client.get("/file", params=params,
+                              headers={"If-Modified-Since": stamp}) as response:
+            assert response.status == 304
+
+        async with client.head("/file", params=params) as response:
+            assert response.status == 200
+            assert response.headers.get("Content-Length") == str(len(payload))
+            assert len(await response.read()) == 0
+
+        async with client.get("/file", params={"path": "../outside.wav"}) as response:
+            assert response.status == 403
+    finally:
+        await client.close()
+        await context.close()

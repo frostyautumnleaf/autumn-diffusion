@@ -352,3 +352,107 @@ def test_an_ordinary_failure_keeps_just_its_message():
     assert "module" not in payload
     assert payload["error"] == "RuntimeError: CUDA out of memory"
     assert payload["traceback"]
+
+
+# Live listening and the peak grid -----------------------------------------
+def _live_path(url: str, home: Layout) -> Path:
+    """Resolve a ``/file?path=...`` URL back onto the temporary program folder."""
+    from urllib.parse import unquote
+
+    relative = unquote(url.split("path=", 1)[1])
+    if relative.startswith("/") or (home.root / relative).is_file():
+        return home.root / relative.lstrip("/")
+    return Path(relative)
+
+
+async def test_every_live_tile_shares_one_peak_grid(runner):
+    """Tiles on different bucket rates land on the wrong grid and draw as holes."""
+    from autumn.music_worker import PEAK_BUCKETS_PER_SECOND
+
+    await runner.start("grid-1", {"prompt": "tight groove"})
+    await _wait_for(runner.test_events, "done", "grid-1")
+
+    chunks = [event for event in runner.test_events if event.get("event") == "audio"]
+    assert len(chunks) >= 2
+    assert {round(chunk["peaks_per_second"], 3) for chunk in chunks} == {
+        float(PEAK_BUCKETS_PER_SECOND)}
+    for chunk in chunks:
+        assert len(chunk["peaks"]) == pytest.approx(
+            chunk["duration"] * PEAK_BUCKETS_PER_SECOND, abs=2)
+
+
+
+def _live_target(url: str, home) -> Path:
+    """Resolve a live ``/file?path=`` URL onto the temporary program folder."""
+    from urllib.parse import unquote
+
+    name = unquote(url.split("path=", 1)[1]).rsplit("/", 1)[-1]
+    return home.cache_dir / "live" / name
+
+
+async def _audio_with_url(runner, job_id: str, want: int = 2):
+    """Wait until the worker has streamed a tile that carries a playable URL."""
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + TIMEOUT
+    chunks: list[dict] = []
+    while loop.time() < deadline:
+        chunks = [event for event in runner.test_events
+                  if event.get("event") == "audio" and event.get("job_id") == job_id
+                  and event.get("url")]
+        if len(chunks) >= want:
+            return chunks
+        await asyncio.sleep(0.02)
+    return chunks
+
+
+async def test_a_live_audio_file_grows_while_the_song_decodes(runner, home):
+    """Listening early needs a real WAV, valid at every tile, next to the peaks."""
+    runner.settings.set("music.stub_seconds", 2.0)
+    await runner.start("live-1", {"prompt": "warm pad"})
+
+    chunks = await _audio_with_url(runner, "live-1")
+    assert chunks, "the worker should stream a playable file while the VAE runs"
+    assert all(_live_target(chunk["url"], home) == _live_target(chunks[0]["url"], home)
+               for chunk in chunks)
+    path = _live_target(chunks[0]["url"], home)
+    assert path.is_file()
+
+    buffered = [float(chunk["buffered"]) for chunk in chunks]
+    assert buffered == sorted(buffered) and buffered[-1] > 0.0
+    with wave.open(str(path)) as reader:
+        assert reader.getframerate() == 48000
+        assert reader.getnchannels() == 2
+        assert reader.getsampwidth() == 2
+        assert reader.getnframes() == pytest.approx(buffered[-1] * 48000, abs=4800)
+        assert reader.getnframes() >= int(chunks[0]["duration"] * 48000)
+
+    await _wait_for(runner.test_events, "done", "live-1")
+    assert not path.exists(), "the finished track replaces the live file"
+
+
+async def test_live_audio_can_be_switched_off(runner, home):
+    runner.settings.set("music.live_preview", False)
+    await runner.start("live-2", {"prompt": "quiet"})
+
+    done = await _wait_for(runner.test_events, "done", "live-2")
+    assert done["audio_seconds"] > 0
+    streamed = [event for event in runner.test_events
+                if event.get("event") == "audio" and event.get("url")]
+    assert not streamed
+    assert not (home.cache_dir / "live" / "live-2.wav").exists()
+
+
+def test_peaks_with_rate_reports_the_grid_it_ended_up_on():
+    """A capped envelope is coarser than asked for, and the caller has to know."""
+    from autumn.music_worker import peaks_with_rate
+
+    rate = 48000
+    tone = np.sin(2 * np.pi * 220 * np.arange(rate * 4) / rate).astype(np.float32)
+
+    peaks, per_second = peaks_with_rate(tone, rate, 25, 6000)
+    assert per_second == pytest.approx(25.0, abs=0.01)
+    assert len(peaks) == pytest.approx(4 * 25, abs=2)
+
+    capped, coarse = peaks_with_rate(tone, rate, 25, 40)
+    assert len(capped) == 40
+    assert coarse == pytest.approx(10.0, abs=0.01)   # 40 buckets over 4 seconds

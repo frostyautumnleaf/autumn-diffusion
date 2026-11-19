@@ -7,9 +7,10 @@
 
 import { state, TOPICS } from './state.js';
 import { sectionsFor, snapFrames as snapVideoFrames } from './sections.js';
-import { buildField, getPath, setPath } from './fields.js';
+import { buildField, getPath, setPath, fieldDefault } from './fields.js';
 import { icon } from './icons.js';
-import { el, clear, clamp } from './util.js';
+import { attachTooltip, menu, toast } from './components.js';
+import { el, clear, clamp, copyText } from './util.js';
 
 // Form context -------------------------------------------------------------
 /** Read a form value, falling back to the server defaults for that tab. */
@@ -194,6 +195,21 @@ export class Panel {
       el('span', { class: 'chev', html: icon('chevron_right', 14) }),
     ]);
     if (!hint) head.querySelector('.section-count').remove();
+    const label = head.querySelector('.section-label');
+    if (section.tip) {
+      label.classList.add('has-tip');
+      attachTooltip(label, { title: section.label, text: section.tip });
+    }
+    // Right-click a section to reset it, or to copy what it currently holds.
+    head.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      menu(null, [
+        { label: 'Reset this section to defaults', icon: 'refresh',
+          run: () => resetSection(this, section) },
+        { label: 'Copy these settings as JSON', icon: 'copy',
+          run: () => copySection(this, section) },
+      ], { at: { x: event.clientX, y: event.clientY } });
+    });
 
     const body = el('div', { class: 'section-body' });
     for (const field of section.fields) {
@@ -227,6 +243,38 @@ export class Panel {
 
   destroy() {
     state.off(TOPICS.form, this._onForm);
+  }
+}
+
+/** Write the stored default back over every field a section owns. */
+function resetSection(panel, section) {
+  let touched = 0;
+  for (const field of section.fields) {
+    if (!field.key || String(field.key).startsWith('_')) continue;
+    if (field.when && !field.when(panel.ctx)) continue;
+    const def = fieldDefault(field, panel.kind);
+    if (def === undefined) continue;
+    let copy = def;
+    try { copy = structuredClone(def); } catch (err) { copy = def; }
+    state.setFormValue(panel.kind, field.key, copy);
+    touched += 1;
+  }
+  panel.render();
+  toast(touched ? `${section.label}: ${touched} setting(s) reset` : 'Nothing to reset',
+    { kind: 'ok', timeout: 1800 });
+}
+
+async function copySection(panel, section) {
+  const values = {};
+  for (const field of section.fields) {
+    if (!field.key || String(field.key).startsWith('_')) continue;
+    values[field.key] = panel.ctx.get(field.key);
+  }
+  try {
+    await copyText(JSON.stringify(values, null, 2));
+    toast(`${section.label} copied as JSON`, { kind: 'ok', timeout: 1800 });
+  } catch (err) {
+    toast(err.message, { kind: 'err' });
   }
 }
 

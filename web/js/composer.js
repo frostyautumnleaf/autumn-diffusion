@@ -447,6 +447,13 @@ export class Composer {
       label: 'Save the current form as a preset', icon: 'save',
       run: () => this.savePreset(),
     });
+    items.push({
+      label: 'Reset the form to defaults', icon: 'refresh',
+      run: () => {
+        state.resetForm(this.kind);
+        toast('Form reset to the default settings', { kind: 'ok', timeout: 1800 });
+      },
+    });
     if (!items.length) items.push({ label: 'No presets for this tab yet', disabled: true });
     menu(anchor, items);
   }

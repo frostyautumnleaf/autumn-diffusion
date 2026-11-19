@@ -49,11 +49,14 @@ class MusicRunner:
 
     def __init__(self, settings: Settings, *, python: Path | str | None = None,
                  yue_dir: Path | None = None, output_dir: Path | None = None,
+                 live_dir: Path | None = None,
                  on_log: Callable[[str], None] | None = None):
         self.settings = settings
         self._python = Path(python) if python else None
         self.yue_dir = Path(yue_dir) if yue_dir else LAYOUT.yue_dir
         self.output_dir = Path(output_dir) if output_dir else LAYOUT.music_output_dir
+        # Growing WAV files the browser plays while a track still decodes.
+        self.live_dir = Path(live_dir) if live_dir else LAYOUT.cache_dir / "live"
         self.on_log = on_log or (lambda line: None)
         self.process: asyncio.subprocess.Process | None = None
         self._emit: Callable[[dict], Any] = lambda event: None
@@ -120,6 +123,7 @@ class MusicRunner:
             [str(PROGRAM_DIR), env.get("PYTHONPATH", "")]).rstrip(os.pathsep)
         env["AUTUMN_MUSIC_OUTPUT"] = str(self.output_dir)
         env["AUTUMN_YUE_DIR"] = str(self.yue_dir)
+        env["AUTUMN_LIVE_DIR"] = str(self.live_dir)
         if self.use_stub:
             env["AUTUMN_MUSIC_STUB"] = "1"
         env.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "0")
@@ -217,6 +221,8 @@ class MusicRunner:
         if self.use_stub:
             payload["_stub_seconds"] = float(music.get("stub_seconds") or 12.0)
             payload["_stub_stage_seconds"] = float(music.get("stub_stage_seconds") or 0.35)
+        # The growing WAV the browser plays is only written when live preview is on.
+        payload["_live_preview"] = bool(music.get("live_preview", True))
         return payload
 
     async def _read_stdout(self) -> None:

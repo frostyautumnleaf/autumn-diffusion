@@ -7,6 +7,7 @@ import { api } from './api.js';
 import { icon } from './icons.js';
 import { toast, menu, confirmDialog, lightbox } from './components.js';
 import { el, clear, fileUrl, mediaUrl, baseName, timeAgo, seconds as secs, debounce } from './util.js';
+import { waveThumb } from './waveform.js';
 
 const KIND_LABEL = { image: 'Images', video: 'Videos', music: 'Tracks' };
 
@@ -19,8 +20,11 @@ export function thumbOf(job) {
 }
 
 /**
- * Thumbnail node for a job. A picture that cannot be read is swapped for the
- * kind icon, so a cleared thumbnail cache never leaves a broken image on screen.
+ * Thumbnail node for a job.
+ *
+ * Audio has no picture, so a track is drawn as a static waveform from the peaks
+ * the worker reports. A picture that cannot be read is swapped for the kind icon,
+ * so a cleared thumbnail cache never leaves a broken image on screen.
  */
 export function thumbNode(job, size = 20) {
   const fallback = () => el('span', {
@@ -28,7 +32,11 @@ export function thumbNode(job, size = 20) {
     html: icon(job.kind === 'music' ? 'music' : (job.kind || 'image'), size),
   });
   const src = thumbOf(job);
-  if (!src) return fallback();
+  if (!src) {
+    const peaks = (job.meta || {}).peaks;
+    if (job.kind === 'music' && Array.isArray(peaks) && peaks.length) return waveThumb(peaks);
+    return fallback();
+  }
   const img = el('img', { src, alt: '', loading: 'lazy' });
   img.addEventListener('error', () => img.replaceWith(fallback()), { once: true });
   return img;
@@ -61,6 +69,7 @@ export class History {
     this.strip = el('div', { class: 'history-strip' });
     this.body.appendChild(this.strip);
     this.root.appendChild(this.body);
+    this._signature = null;   // the new strip is empty, so it must be filled
     this.renderBody();
   }
 
@@ -115,48 +124,59 @@ export class History {
     const jobs = this.jobs();
     if (this.titleEl) this.titleEl.textContent = KIND_LABEL[this.kind] || 'History';
     if (this.countEl) this.countEl.textContent = `${jobs.length} shown`;
-    clear(this.strip);
-    if (!jobs.length) {
-      this.strip.appendChild(el('div', { class: 'empty', style: { width: '100%' } }, [
-        el('div', { class: 'e-ic', html: icon('history', 22) }),
-        el('div', {}, [
-          el('b', { text: `No ${KIND_LABEL[this.kind] ? KIND_LABEL[this.kind].toLowerCase() : 'history'} yet` }),
-          el('span', { text: 'Finished generations land here and stay between sessions.' }),
-        ]),
-      ]));
+    const signature = jobs.map((job) => job.id).join(',');
+    if (signature !== this._signature) {
+      // The set or the order changed, so the strip is rebuilt. Progress updates do
+      // not change it, which is what keeps thumbnails from flickering.
+      this._signature = signature;
+      this.cards = new Map();
+      clear(this.strip);
+      if (!jobs.length) {
+        this.strip.appendChild(el('div', { class: 'empty', style: { width: '100%' } }, [
+          el('div', { class: 'e-ic', html: icon('history', 22) }),
+          el('div', {}, [
+            el('b', { text: `No ${KIND_LABEL[this.kind] ? KIND_LABEL[this.kind].toLowerCase() : 'history'} yet` }),
+            el('span', { text: 'Finished generations land here and stay between sessions.' }),
+          ]),
+        ]));
+        return;
+      }
+      for (const job of jobs) {
+        const card = this.card(job);
+        this.cards.set(job.id, card);
+        this.strip.appendChild(card);
+      }
       return;
     }
-    for (const job of jobs) this.strip.appendChild(this.card(job));
+    for (const job of jobs) {
+      const card = this.cards && this.cards.get(job.id);
+      if (card) this.updateCard(card, job);
+    }
   }
 
   card(job) {
-    const active = state.ui.selectedJob === job.id;
-    const running = job.status === 'running' || job.status === 'queued';
-    const progress = job.steps ? (job.step || 0) / job.steps : (job.progress || 0);
-
     const card = el('div', {
-      class: `hist-card ${active ? 'active' : ''}`,
+      class: 'hist-card',
       dataset: { job: job.id },
-      title: `${job.title || job.prompt || job.id} — ${job.status}`,
       onclick: () => selectJob(job),
       ondblclick: () => openJob(job),
+      oncontextmenu: (event) => {
+        event.preventDefault();
+        this.jobMenu(null, job, { x: event.clientX, y: event.clientY });
+      },
     }, [
-      el('div', { class: 'hist-thumb' }, [
-        thumbNode(job),
-        running ? el('div', { class: 'hist-live' }, [el('div', { class: 'spinner' })]) : null,
-      ]),
-      el('div', { class: 'hist-bar' }, [el('i', { style: { width: `${Math.round(progress * 100)}%` } })]),
+      el('div', { class: 'hist-thumb' }),
+      el('div', { class: 'hist-bar' }, [el('i')]),
       el('div', { class: 'hist-info' }, [
-        el('div', { class: 'hist-title', text: job.title || job.prompt || job.id }),
+        el('div', { class: 'hist-title' }),
         el('div', { class: 'hist-meta' }, [
-          el('span', { text: timeAgo(job.created_at) }),
-          el('span', { text: job.elapsed ? secs(job.elapsed) : '' }),
-          el('span', { text: job.status === 'error' ? 'failed' : '' }),
+          el('span', { class: 'm-when' }),
+          el('span', { class: 'm-el' }),
+          el('span', { class: 'm-state' }),
         ]),
       ]),
       el('button', {
-        class: `hist-star ${job.favorite ? 'on' : ''}`,
-        html: icon('star', 11), title: 'Favourite',
+        class: 'hist-star', html: icon('star', 11), title: 'Favourite',
         onclick: async (event) => {
           event.stopPropagation();
           const next = !job.favorite;
@@ -173,19 +193,77 @@ export class History {
         onclick: (event) => { event.stopPropagation(); this.jobMenu(event.currentTarget, job); },
       }),
     ]);
+    card._refs = {
+      thumb: card.querySelector('.hist-thumb'),
+      bar: card.querySelector('.hist-bar i'),
+      title: card.querySelector('.hist-title'),
+      when: card.querySelector('.m-when'),
+      elapsed: card.querySelector('.m-el'),
+      state: card.querySelector('.m-state'),
+    };
+    this.updateCard(card, job);
     return card;
   }
 
-  jobMenu(anchor, job) {
+  /**
+   * Refresh one card in place.
+   *
+   * Progress events arrive many times a second. Rebuilding the card would drop the
+   * <img> and the browser would reload the thumbnail, which reads as a flash, so
+   * only the parts that changed are written.
+   */
+  updateCard(card, job) {
+    const refs = card._refs;
+    if (!refs) return;
+    const running = job.status === 'running' || job.status === 'queued';
+    const progress = job.steps ? (job.step || 0) / job.steps : (job.progress || 0);
+    card.classList.toggle('active', state.ui.selectedJob === job.id);
+    card.classList.toggle('running', running);
+    card.classList.toggle('failed', job.status === 'error');
+    card.title = `${job.title || job.prompt || job.id} — ${job.status}`;
+    refs.bar.style.width = `${Math.round(Math.max(0, Math.min(1, progress)) * 100)}%`;
+    refs.title.textContent = job.title || job.prompt || job.id;
+    refs.when.textContent = timeAgo(job.created_at);
+    refs.elapsed.textContent = job.elapsed ? secs(job.elapsed) : '';
+    refs.state.textContent = job.status === 'error' ? 'failed'
+      : (running ? `${Math.round(progress * 100)}%` : '');
+    const star = card.querySelector('.hist-star');
+    star.classList.toggle('on', !!job.favorite);
+    // The spinner lives inside the thumb, so it is patched rather than rebuilt.
+    let live = refs.thumb.querySelector(':scope > .hist-live');
+    if (running && !live) {
+      live = el('div', { class: 'hist-live' }, [el('div', { class: 'spinner' })]);
+      refs.thumb.appendChild(live);
+    } else if (!running && live) {
+      live.remove();
+      // The node is gone, so it must not be used as the insertion reference below.
+      live = null;
+    }
+    const src = thumbOf(job);
+    // A finished job must show something even when the thumbnail path never
+    // changed, which is the case for audio and for a job that failed.
+    const empty = !running && !refs.thumb.querySelector(':scope > :not(.hist-live)');
+    if (src !== refs.thumbSrc || empty) {
+      refs.thumbSrc = src;
+      for (const child of Array.from(refs.thumb.children)) {
+        if (child !== live) child.remove();
+      }
+      if (src || !running) refs.thumb.appendChild(thumbNode(job));
+    }
+  }
+
+  jobMenu(anchor, job, at = null) {
     menu(anchor, [
       { label: 'Open in the viewer', icon: 'expand', run: () => openJob(job) },
+      { label: 'Show in the stage', icon: 'arrow_right', run: () => selectJob(job) },
       { label: 'Load settings into the form', icon: 'sliders_h', run: () => loadIntoForm(job) },
       { label: 'Run again', icon: 'refresh', run: () => rerun(job) },
       { label: job.favorite ? 'Remove favourite' : 'Favourite', icon: 'star', run: () => favourite(job, !job.favorite) },
       { label: 'Copy the prompt', icon: 'copy', run: () => copyPrompt(job) },
+      { label: 'Copy the settings', icon: 'code', run: () => copySettings(job) },
       { sep: true },
       { label: 'Delete from history', icon: 'trash', danger: true, run: () => remove(this, job) },
-    ]);
+    ], at ? { at } : {});
   }
 
   openMenu(anchor) {
@@ -254,6 +332,14 @@ async function copyPrompt(job) {
   const { copyText } = await import('./util.js');
   try { await copyText(job.prompt || ''); toast('Prompt copied', { kind: 'ok' }); }
   catch (err) { toast(err.message, { kind: 'err' }); }
+}
+
+async function copySettings(job) {
+  const { copyText } = await import('./util.js');
+  try {
+    await copyText(JSON.stringify(job.params || {}, null, 2));
+    toast('Settings copied as JSON', { kind: 'ok' });
+  } catch (err) { toast(err.message, { kind: 'err' }); }
 }
 
 async function remove(history, job) {

@@ -29,6 +29,23 @@ const EMPTY_FORM = {
 
 const listeners = new Map();
 const pending = new Map();
+
+/** Height the history block ships with, before the screen is measured. */
+const DEFAULT_HISTORY_HEIGHT = 250;
+
+/**
+ * Fit the history block to the screen.
+ *
+ * 250 px is comfortable on a 1000 px window and swallows the stage on a 760 px
+ * one, so the shipped default is capped at a quarter of the viewport. A height
+ * the user dragged is theirs and is left alone.
+ */
+function fitHistoryHeight(value) {
+  const wanted = Number(value) || DEFAULT_HISTORY_HEIGHT;
+  const screen = (typeof window !== 'undefined' && window.innerHeight) || 1000;
+  if (wanted !== DEFAULT_HISTORY_HEIGHT) return wanted;
+  return Math.round(Math.max(170, Math.min(wanted, screen * 0.26)));
+}
 let frame = null;
 
 function dispatch(topic, detail) {
@@ -113,10 +130,12 @@ export const state = {
     sidebarVisible: true,
     railWidth: 372,
     sideWidth: 268,
-    historyHeight: 232,
+    historyHeight: fitHistoryHeight(DEFAULT_HISTORY_HEIGHT),
     theme: 'dark',
     accent: 'amber',
     logsOpen: false,
+    volume: 0.8,
+    muted: false,
     assetsCategory: 'checkpoints',
     assetsSubfolder: '',
     assetsQuery: '',
@@ -178,7 +197,7 @@ export const state = {
     if (app.accent) this.ui.accent = app.accent;
     if (typeof app.sidebar_visible === 'boolean') this.ui.sidebarVisible = app.sidebar_visible;
     if (typeof app.history_visible === 'boolean') this.ui.historyCollapsed = !app.history_visible;
-    if (app.history_height) this.ui.historyHeight = app.history_height;
+    if (app.history_height) this.ui.historyHeight = fitHistoryHeight(app.history_height);
     this.persistUI();
   },
 
@@ -344,9 +363,10 @@ export const state = {
   persistUI() {
     const { tab, selectedJob, railFilter, sections, stageView, historyCollapsed,
       sidebarVisible, railWidth, sideWidth, historyHeight, theme, accent,
-      assetsCategory } = this.ui;
+      assetsCategory, volume, muted } = this.ui;
     saveJSON(UI_KEY, { tab, selectedJob, railFilter, sections, stageView, historyCollapsed,
-      sidebarVisible, railWidth, sideWidth, historyHeight, theme, accent, assetsCategory });
+      sidebarVisible, railWidth, sideWidth, historyHeight, theme, accent, assetsCategory,
+      volume, muted });
   },
 
   restoreUI() {
@@ -373,19 +393,33 @@ export const state = {
   },
 
   setAudioPeaks(jobId, payload) {
-    const current = this.audioPeaks.get(jobId) || { peaks: [], duration: 0, sampleRate: 48000 };
+    const current = this.audioPeaks.get(jobId)
+      || { peaks: [], duration: 0, sampleRate: 48000, perSecond: 0 };
     const peaks = current.peaks.slice();
-    const perSecond = payload.peaks && payload.peaks.length
-      ? payload.peaks.length / Math.max(0.0001, payload.duration) : 25;
-    const start = Math.floor((payload.start || 0) * perSecond);
+    // The first tile fixes the grid for the whole track. A tile bucketed at a
+    // different rate is resampled onto it, otherwise the two rates drift apart and
+    // the waveform shows silent holes where audio really plays.
+    const rate = current.perSecond || payload.peaks_per_second || 25;
+    const tileRate = payload.peaks_per_second
+      || (payload.peaks && payload.peaks.length
+        ? payload.peaks.length / Math.max(0.0001, payload.duration || 1) : rate);
+    const scale = tileRate > 0 ? tileRate / rate : 1;
+    const start = Math.floor((payload.start || 0) * rate);
+    if (start > peaks.length) peaks.fill(0, peaks.length, start);
     for (let i = 0; i < payload.peaks.length; i += 1) {
-      peaks[start + i] = payload.peaks[i];
+      const source = Math.min(payload.peaks.length - 1, Math.floor(i / scale));
+      peaks[start + i] = payload.peaks[source];
     }
+    const played = Math.max(0, (payload.start || 0) + (payload.duration || 0));
     this.audioPeaks.set(jobId, {
       peaks,
-      duration: Math.max(current.duration, (payload.start || 0) + (payload.duration || 0)),
+      duration: Math.max(current.duration, played, payload.buffered || 0),
       sampleRate: payload.sample_rate || current.sampleRate,
-      perSecond,
+      perSecond: rate,
+      // The growing WAV the worker writes, so the decoded part can be listened to.
+      url: payload.url || current.url || '',
+      revision: Number(payload.revision) || current.revision || 0,
+      buffered: Math.max(current.buffered || 0, Number(payload.buffered) || 0, played),
     });
     notify(TOPICS.music, jobId);
   },

@@ -712,7 +712,7 @@ class Api:
         base = LAYOUT.comfy_input if folder_type == "input" else LAYOUT.comfy_output
         candidate = (base / subfolder / filename)
         if _inside(candidate, base) and candidate.is_file():
-            return web.FileResponse(candidate)
+            return await file_response(request, candidate)
         try:
             payload = await self.ctx.comfy.view(filename, subfolder, folder_type)
         except ComfyError as exc:
@@ -731,11 +731,124 @@ class Api:
             return fail("path is outside the program folders", status=403)
         if not target.is_file():
             return fail("file not found", status=404)
-        return web.FileResponse(target)
+        return await file_response(request, target)
 
 
 # ------------------------------------------------------------------- helpers
 _VERSION = "0.1.0"
+
+_STREAM_CHUNK = 256 * 1024
+
+
+async def file_response(request: web.Request, path: Path) -> web.StreamResponse:
+    """Serve a file with Range and conditional support.
+
+    ``<video>`` and ``<audio>`` only seek when the server answers 206 for a Range
+    request; a whole-file 200 makes the browser buffer from the start, which is why
+    jumping to the middle of a clip felt broken. Conditional requests keep the
+    history strip from re-fetching thumbnails it already has.
+    """
+    import asyncio
+    import email.utils
+    import os
+
+    ctype = _content_type(path.name)
+    try:
+        info = os.stat(path)
+    except OSError:
+        return fail("file not found", status=404)
+    size = int(info.st_size)
+    modified = int(info.st_mtime)
+    modified_text = email.utils.formatdate(modified, usegmt=True)
+
+    headers = {
+        "Content-Type": ctype,
+        "Accept-Ranges": "bytes",
+        "Last-Modified": modified_text,
+        "Cache-Control": "private, max-age=0, must-revalidate",
+    }
+
+    start, end = 0, max(0, size - 1)
+    partial = False
+    range_header = request.headers.get("Range", "")
+    if range_header:
+        span = _parse_range(range_header, size)
+        if span is None:
+            return web.Response(status=416,
+                                headers={**headers, "Content-Range": f"bytes */{size}"})
+        start, end = span
+        partial = True
+    elif _not_modified(request, modified_text, modified):
+        return web.Response(status=304, headers=headers)
+
+    length = max(0, end - start + 1)
+    status = 206 if partial else 200
+    if partial:
+        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+    if request.method == "HEAD":
+        headers["Content-Length"] = str(length)
+        return web.Response(status=status, headers=headers)
+
+    response = web.StreamResponse(status=status, headers={**headers, "Content-Length": str(length)})
+    await response.prepare(request)
+    loop = asyncio.get_event_loop()
+    try:
+        with path.open("rb") as handle:
+            handle.seek(start)
+            remaining = length
+            while remaining > 0:
+                chunk = await loop.run_in_executor(None, handle.read, min(_STREAM_CHUNK, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+                await response.write(chunk)
+    except (OSError, ConnectionResetError):
+        return response
+    await response.write_eof()
+    return response
+
+
+def _parse_range(header: str, size: int) -> tuple[int, int] | None:
+    """Parse ``bytes=a-b`` (single range only) into inclusive offsets."""
+    unit, _, spec = header.partition("=")
+    if unit.strip().lower() != "bytes" or "," in spec:
+        return None
+    left, _, right = spec.partition("-")
+    left, right = left.strip(), right.strip()
+    try:
+        if not left:
+            if not right:
+                return None
+            tail = min(int(right), size)
+            return size - tail, max(0, size - 1)
+        begin = int(left)
+    except ValueError:
+        return None
+    if begin >= size or begin < 0:
+        return None
+    end = int(right) if right else size - 1
+    return begin, min(end, size - 1)
+
+
+def _not_modified(request: web.Request, modified_text: str, modified: int) -> bool:
+    """True when the copy the client holds is still current."""
+    import email.utils
+    from datetime import timezone
+
+    stamp = request.headers.get("If-Modified-Since", "")
+    if not stamp:
+        return False
+    if stamp == modified_text:
+        return True
+    try:
+        parsed = email.utils.parsedate_to_datetime(stamp)
+    except (TypeError, ValueError):
+        return False
+    if parsed is None:
+        return False
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return int(parsed.astimezone(timezone.utc).timestamp()) >= modified
 
 ENGINE_KEYS = ("port", "listen", "preview_method", "preview_size", "vram_mode", "attention",
                "unet_dtype", "vae_dtype", "text_encoder_dtype", "cache", "reserve_vram", "high_ram",

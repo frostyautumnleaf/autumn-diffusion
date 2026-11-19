@@ -289,7 +289,10 @@ export class Assets {
       class: 'card',
       ondblclick: () => this.openFolder(item),
       onclick: () => this.select(item),
-      oncontextmenu: (event) => { event.preventDefault(); this.entryMenu(event.currentTarget, item); },
+      oncontextmenu: (event) => {
+        event.preventDefault();
+        this.entryMenu(event.currentTarget, item, { x: event.clientX, y: event.clientY });
+      },
     }, [
       el('div', { class: 'card-title' }, [
         el('span', { class: 'section-icon', html: icon('folder', 14) }),
@@ -304,7 +307,10 @@ export class Assets {
       class: this.selected && this.selected.path === item.path ? 'sel' : '',
       ondblclick: () => this.openFolder(item),
       onclick: () => this.select(item),
-      oncontextmenu: (event) => { event.preventDefault(); this.entryMenu(event.currentTarget, item); },
+      oncontextmenu: (event) => {
+        event.preventDefault();
+        this.entryMenu(event.currentTarget, item, { x: event.clientX, y: event.clientY });
+      },
     }, [
       el('td', { class: 'name' }, [
         el('span', { class: 'section-icon', html: icon('folder', 13) }),
@@ -331,7 +337,10 @@ export class Assets {
       class: `card ${this.selected && this.selected.path === item.path ? 'sel' : ''}`,
       onclick: () => this.select(item),
       ondblclick: () => this.previewMedia(item),
-      oncontextmenu: (event) => { event.preventDefault(); this.entryMenu(event.currentTarget, item); },
+      oncontextmenu: (event) => {
+        event.preventDefault();
+        this.entryMenu(event.currentTarget, item, { x: event.clientX, y: event.clientY });
+      },
     }, [
       thumb,
       el('div', { class: 'card-title' }, [
@@ -347,7 +356,10 @@ export class Assets {
       class: this.selected && this.selected.path === item.path ? 'sel' : '',
       onclick: () => this.select(item),
       ondblclick: () => this.previewMedia(item),
-      oncontextmenu: (event) => { event.preventDefault(); this.entryMenu(event.currentTarget, item); },
+      oncontextmenu: (event) => {
+        event.preventDefault();
+        this.entryMenu(event.currentTarget, item, { x: event.clientX, y: event.clientY });
+      },
     }, [
       el('td', { class: 'name' }, [
         el('span', { class: 'section-icon', html: icon(KIND_ICON[item.kind] || 'file', 13) }),
@@ -769,7 +781,7 @@ export class Assets {
     anchor.remove();
   }
 
-  entryMenu(anchor, item) {
+  entryMenu(anchor, item, at = null) {
     menu(anchor, [
       { label: item.is_dir ? 'Open' : 'Preview', icon: item.is_dir ? 'arrow_right' : 'expand',
         disabled: item.is_dir ? false : !item.url,
@@ -782,7 +794,7 @@ export class Assets {
       } },
       { sep: true },
       { label: 'Delete', icon: 'trash', danger: true, run: () => this.remove(item) },
-    ]);
+    ], at ? { at } : {});
   }
 
   // ------------------------------------------------------------------- data

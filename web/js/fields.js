@@ -4,7 +4,7 @@
 import { el, clear, clamp, debounce, fileName, baseName, matchScore, mediaKind } from './util.js';
 import { icon } from './icons.js';
 import { state, TOPICS } from './state.js';
-import { menu, promptDialog, toast } from './components.js';
+import { menu, promptDialog, toast, attachTooltip } from './components.js';
 
 // Path helpers -------------------------------------------------------------
 export function getPath(source, path) {
@@ -768,6 +768,77 @@ function resolveOptions(spec, ctx) {
   return (raw || []).map((item) => (typeof item === 'string' ? { value: item, label: item } : item));
 }
 
+/** Default value of a field: an explicit spec default, then the server defaults. */
+export function fieldDefault(spec, kind) {
+  if (!spec || !spec.key) return undefined;
+  if (spec.default !== undefined) return spec.default;
+  const table = (state.settings.defaults && state.settings.defaults[kind]) || null;
+  if (table) {
+    const value = getPath(table, spec.key);
+    if (value !== undefined) return value;
+  }
+  return getPath(state.settings[kind] || {}, spec.key);
+}
+
+function sameValue(a, b) {
+  if (a === b) return true;
+  if ((a === '' || a === null || a === undefined) && (b === '' || b === null || b === undefined)) return true;
+  try { return JSON.stringify(a) === JSON.stringify(b); } catch (err) { return false; }
+}
+
+function shown(value) {
+  if (value === '' || value === null || value === undefined) return 'empty';
+  if (Array.isArray(value)) return value.length ? `${value.length} item(s)` : 'empty';
+  if (typeof value === 'object') return 'the default object';
+  if (typeof value === 'boolean') return value ? 'on' : 'off';
+  return String(value);
+}
+
+/**
+ * Add the two things every field gets but does not build itself: a rich tooltip on
+ * the label, and a reset button that writes the stored default back into the form.
+ *
+ * The button is only decorative until the value differs from the default, which is
+ * when it lights up, so a full panel does not read as a wall of icons.
+ */
+function decorate(node, spec, ctx) {
+  if (!node || !node.classList || !node.classList.contains('field')) return node;
+  const label = node.querySelector('.field-label');
+  const text = spec.tip || (spec.help ? String(spec.help) : '');
+  if (label && (text || spec.example)) {
+    label.classList.add('has-tip');
+    attachTooltip(label, { title: String(spec.label || ''), text, example: spec.example });
+  }
+  if (!spec.key || spec.noReset || !ctx || typeof ctx.set !== 'function') return node;
+  const def = fieldDefault(spec, ctx.kind);
+  if (def === undefined) return node;
+  let top = node.querySelector('.field-top');
+  if (!top && !label) return node;   // a control with no label has nowhere to put it
+  if (!top) {
+    top = el('div', { class: 'field-top' });
+    node.insertBefore(top, node.firstChild);
+  }
+  if (label && label.parentNode !== top) top.appendChild(label);
+  const button = el('button', {
+    class: 'field-reset', tabindex: '-1', html: icon('refresh', 11),
+    onclick: (event) => {
+      event.stopPropagation();
+      let copy = def;
+      try { copy = structuredClone(def); } catch (err) { copy = def; }
+      ctx.set(spec.key, copy);
+      node.classList.remove('changed');
+      if (ctx.refresh) ctx.refresh();
+    },
+  });
+  attachTooltip(button, {
+    title: `Reset ${spec.label || spec.key}`,
+    text: `Back to the default: ${shown(def)}.`,
+  });
+  if (top) top.appendChild(button);
+  if (!sameValue(ctx.get(spec.key), def)) node.classList.add('changed');
+  return node;
+}
+
 /** Build one field from a spec. Returns null when the spec is filtered out. */
 export function buildField(spec, ctx) {
   if (spec.when && !spec.when(ctx)) return null;
@@ -779,6 +850,7 @@ export function buildField(spec, ctx) {
   if (spec.class) node.classList.add(spec.class);
   node.dataset.field = spec.key || spec.type;
   if (spec.search !== false && spec.label) node.dataset.search = String(spec.label).toLowerCase();
+  decorate(node, spec, ctx);
   return node;
 }
 

@@ -1029,6 +1029,146 @@ const MUSIC_SECTIONS = [
 // Registry -----------------------------------------------------------------
 const REGISTRY = { image: IMAGE_SECTIONS, video: VIDEO_SECTIONS, music: MUSIC_SECTIONS };
 
+// Tooltips -----------------------------------------------------------------
+//
+// `help` on a spec is the short line printed under a control. The tables below
+// feed the hover tooltip, which carries the longer explanation and an example, and
+// they live here as data because 170 specs each carrying three lines of prose made
+// the panel definitions unreadable.
+
+const SECTION_TIPS = {
+  model: 'Everything that comes off the disk: the checkpoint or diffusion model, the text encoders and the VAE. Changing one usually means the samplers and the latent space have to agree with it.',
+  'model & pipeline': 'The video checkpoint, its text encoders and the VAEs. The family below decides the canvas multiple and the frame grid, so set the family first.',
+  canvas: 'Pixel size of the output. Models are trained at a fixed size, so staying near the trained resolution gives the best result and the least VRAM pressure.',
+  sampling: 'The denoising loop. Steps, sampler, scheduler and CFG are the four settings that change the look of an output the most.',
+  input: 'Anything that conditions the run: an initial image, a mask, or a reference. The mode above decides which of these the graph asks for.',
+  inputs: 'Source media for the run: first and last frames, a source or control video, reference images and driving audio.',
+  hires: 'A second pass at higher resolution. The first pass runs at the canvas size, then the image is upscaled and denoised again.',
+  refiner: 'A second model that finishes the image. It takes over at the switch point, so a low value means it only cleans up detail.',
+  upscale: 'A plain spatial upscale after sampling. It does not re-run the sampler, so it is cheap compared with high-res fix.',
+  regional: 'Different prompts for different parts of the canvas. Each region is masked by position, and the blend mode says how the masked conditioning combines.',
+  adapters: 'LoRAs, textual-inversion embeddings and ControlNets. All three are loaded per run, so they cost load time but no re-bake of the checkpoint.',
+  wildcards: 'Words in double underscores are replaced with a random line from a matching file in the wildcards folder, which is how you vary a prompt without editing it.',
+  decode: 'How the latent becomes pixels. Tiling trades a little quality for a lot of memory, which is what makes long or large videos fit on a card.',
+  interpolate: 'Doubles or quadruples the frame count after generation with RIFE. It changes smoothness, not detail - use SeedVR2 for detail.',
+  seedvr: 'SeedVR2 is a diffusion video restorer. It is far better than a plain upscale at fixing detail, and it needs its own DiT and VAE weights.',
+  output: 'Where the files go and what they are called. The prefix is relative to the ComfyUI output folder.',
+  song: 'The subject of the track: lyrics, style tags and length. YuE reads the lyrics as structure, so verse and chorus markers help.',
+  engine: 'The YuE worker: which model folder, which device, and how the two stages are run.',
+  semantic: 'Stage 1 of YuE: the semantic tokens that carry melody and structure. This is where most of the musical character is set.',
+  abc: 'Stage 2 of YuE: the acoustic (ABC) model that turns semantic tokens into codebook frames.',
+};
+
+const FIELD_TIPS = {
+  checkpoint: {
+    text: 'The full checkpoint: model weights plus its text encoders and VAE. Leave the encoder and VAE rows on auto and the checkpoint supplies them.',
+    example: 'sd_xl_base_1.0.safetensors',
+  },
+  unet: {
+    text: 'Load only the diffusion weights, without a checkpoint wrapper. Use this for fp8 or split text-encoder models.',
+  },
+  weight_dtype: {
+    text: 'Storage dtype of the weights in VRAM. Lower saves memory and is usually visually the same; keep the default unless you are tuning a card.',
+  },
+  model_dtype: {
+    text: 'Compute dtype of the sampler. float16-fast is the quickest on modern cards, bfloat16 is the safest for long runs.',
+  },
+  clip: { text: 'Text encoder used to turn the prompt into conditioning. Only set this when the model expects an encoder it does not ship with.' },
+  clip2: { text: 'Second text encoder, for models such as Flux that read two.', example: 'clip_vision_g.safetensors' },
+  clip_type: { text: 'Which CLIP family the encoder belongs to. Auto reads it from the checkpoint; set it by hand only for merged or unusual models.' },
+  vae: { text: 'Encoder and decoder between pixels and latents. Using the wrong VAE shifts colours, and mixing VAEs between passes causes banding.' },
+  clip_skip: { text: 'How many CLIP layers to skip. 1 shifts the prompt towards broader meaning; 0 leaves the model default in place.' },
+  latent: { text: 'Latent space the sampler runs in. Auto picks the one the checkpoint was trained with; SDXL and Flux do not mix.' },
+  prompt: {
+    text: 'What you want to see. Comma-separated phrases weigh the same, so put the most important idea first.',
+    example: 'portrait of an autumn forest, warm rim light, 50mm',
+  },
+  negative: {
+    text: 'What to push away. Keep it short: a long negative list dulls detail more than it fixes artefacts.',
+    example: 'blurry, watermark, extra fingers',
+  },
+  width: { text: 'Width in pixels. Keep it near the trained resolution of the model and on its multiple (8 for SD, 16 for most video models).' },
+  height: { text: 'Height in pixels. Same guidance as width; extreme aspect ratios make models repeat content.' },
+  batch_size: { text: 'Images or videos per run. They share one load, so a batch is cheaper per image than separate runs, and costs VRAM linearly.' },
+  steps: { text: 'Denoising steps. Most models plateau: 20-30 for SD, 25-40 for video. Extra steps past that add time, not quality.' },
+  sampler: { text: 'The solver of the sampling ODE. euler is the safe default; dpmpp_2m with a karras scheduler is the usual quality step up.' },
+  scheduler: { text: 'How noise is removed across the steps. karras adds more detail at low steps, exponential helps Flux-style models, normal is the plain choice.' },
+  cfg: { text: 'How hard the sampler follows the prompt. 4-7 is the usable band for most models; past 10 colours burn and detail hardens.' },
+  denoise: { text: 'How much of the existing image or video is replaced. 100% ignores the input entirely; 30-60% keeps its structure.' },
+  strength: { text: 'How much of the source is kept when image-to-image or video-to-video runs. It is the inverse of the denoise step count.' },
+  shift: { text: 'Moves the noise schedule towards noisier steps. Higher values suit larger resolutions.' },
+  base_shift: { text: 'Lower bound of the resolution-dependent shift, used by models that scale their schedule with the canvas.' },
+  max_shift: { text: 'Upper bound of that resolution-dependent shift.' },
+  seed: { text: 'Start of the noise pattern. The same seed, sampler and size reproduce the same image.' },
+  random_seed: { text: 'Draw a new seed per run. Turn it off when you are dialling in one image.' },
+  seed_increment: { text: 'How much the seed moves after each run, so a series walks forward through seeds instead of repeating.' },
+  init_image: { text: 'Starting image for image-to-image. Combine it with a denoise below 100% to keep the composition.' },
+  mask_image: { text: 'White marks the area to repaint. Feed it through the mask channel below, or draw it in the mask editor.' },
+  mask_channel: { text: 'Which channel of the mask file counts. Red is the convention for masks saved as RGB images.' },
+  init_fit: { text: 'How the initial image is fitted to the canvas. Keep aspect crops nothing; stretch distorts the subject.' },
+  inpaint_grow: { text: 'Expands the mask outwards so the repaint blends into its surroundings instead of ending on the edge.' },
+  hires_fix: { text: 'Second pass at a larger size. It is the cheapest way to gain real detail on a 1024-class model.' },
+  hires_method: { text: 'Upscaler used between the passes. nearest-exact keeps hard edges, bicubic is smoother, and model upscale costs more VRAM.' },
+  hires_scale: { text: 'Magnification of the second pass. 1.5-2.0 is the useful range; past that the second pass invents detail.' },
+  hires_denoise: { text: 'Strength of the second pass. Low keeps the first pass exactly, high repaints it. 0.3-0.6 is the usual window.' },
+  refiner: { text: 'Second model that finishes the image, common with SDXL. It needs to match the base latent space.' },
+  refiner_switch: { text: 'Point in the step count where the refiner takes over, from 0 to 1. 0.8 means the last fifth of the steps.' },
+  loras: { text: 'Adapters that bend the model towards a style or a subject. Weights of 0.6-0.8 keep the base model recognisable.' },
+  embeddings: { text: 'Textual-inversion tokens trained on one subject. They do nothing unless the prompt uses their trigger word.' },
+  controlnets: { text: 'Structural conditioning: edges, depth, pose. Each ControlNet needs a matching guide image and a strength.' },
+  wildcard_seed: { text: 'How a wildcard picks its line. Per batch keeps one choice for the whole batch, per seed makes the run reproducible.' },
+  'regional.enabled': { text: 'Splits the canvas into masked areas and applies a prompt to each. The base prompt still applies everywhere.' },
+  'regional.mode': { text: 'How the masked conditioning combines: add layers the regions, average blends them, and max keeps the strongest signal.' },
+  'regional.regions': { text: 'Each region is a rectangle on the canvas with its own prompt and strength. Overlapping regions blend by the mode above.' },
+  family: { text: 'Which video architecture the checkpoint is. It sets the canvas multiple, the frame grid and the modes the graph can build.' },
+  mode: { text: 'What the run conditions on: text, an image, frames, a video, or references. The family limits what is available.' },
+  frames: { text: 'Length of the clip in frames. It has to land on the grid of the family, so 4n+1 for Wan and 17n+5 for MiniMax.', example: 'wan22: 81 frames at 24 fps = 3.4 s' },
+  fps: { text: 'Playback frame rate written into the file. It does not change how many frames the model generates.' },
+  source_image: { text: 'First frame, or the image an image-to-video run starts from.' },
+  last_frame: { text: 'Final frame, for first-to-last-frame runs. The model interpolates between the two images.' },
+  source_video: { text: 'Video that is re-rendered. Keep denoise low to restyle it, high to replace its motion.' },
+  control_video: { text: 'Structure source: pose, depth or edges are read from it and the run follows that motion.' },
+  reference_images: { text: 'Images that guide identity or style without becoming the first frame. Useful for keeping a character consistent.' },
+  guides: { text: 'Keyframes at given timestamps: the clip is steered towards each image as it plays.' },
+  driving_audio: { text: 'Audio the clip is cut to. LTX-2 and MiniMax H3 can sync motion to it.' },
+  tiled_decode: { text: 'Decode the latent in overlapping tiles. Saves the memory spike at the end of a long video, at the cost of small seams.' },
+  tile_size: { text: 'Pixel size of each decode tile. Smaller uses less memory and is slower.' },
+  tile_overlap: { text: 'Overlap between decode tiles. More overlap hides the seams and costs time.' },
+  temporal_size: { text: 'Frames decoded at once. Lower it when a long clip fails at the decode step.' },
+  temporal_overlap: { text: 'Frames shared between temporal tiles; keeps motion continuous across the joins.' },
+  'interpolate.enabled': { text: 'RIFE interpolation after generation. It smooths motion but cannot add detail that was never sampled.' },
+  'interpolate.multiplier': { text: 'How many times the frame count is multiplied. Doubling 24 fps to 48 fps is the usual target.' },
+  'seedvr.enabled': { text: 'Restores and upscales the finished clip with SeedVR2. It is a separate diffusion pass, so budget the time.' },
+  'seedvr.resolution': { text: 'Long edge the clip is restored to. SeedVR2 works best when the target is a clean multiple of the source.' },
+  'seedvr.batch_size': { text: 'Frames restored at once. Lower it on a small card; it changes memory, not the result.' },
+  'seedvr.color_correction': { text: 'How colour is matched back to the source after restoration. None keeps what the model produced.' },
+  'seedvr.blocks_to_swap': { text: 'Transformer blocks parked in system RAM. More swapping fits big models on small cards and slows the run.' },
+  filename_prefix: { text: 'Folder and name pattern for the output, relative to the ComfyUI output directory.', example: 'autumn/image' },
+  output_format: { text: 'Container written to disk. FLAC is lossless and small; WAV is lossless and universally readable; MP3 is small and lossy.' },
+  live_preview: { text: 'Streams decoded peaks while stage 2 runs, so the waveform fills in and the part already decoded can be played.' },
+  instrumental: { text: 'Generate without vocals, so the lyrics box is ignored.' },
+  style: { text: 'Style tags for YuE. A handful of genres and instruments works better than a paragraph.' },
+  cfg_scale: { text: 'How closely YuE follows the prompt. Leave it empty to use the default the weights were trained with.' },
+  ode_steps: { text: 'Steps of the diffusion head in the acoustic decoder. More is smoother and slower.' },
+};
+
+/** Copy the tooltip tables onto the specs they describe. */
+function applyTips(sections) {
+  for (const section of sections) {
+    if (section.tip === undefined) {
+      section.tip = SECTION_TIPS[section.id] || SECTION_TIPS[String(section.label || '').toLowerCase()] || '';
+    }
+    for (const field of section.fields) {
+      const entry = FIELD_TIPS[field.key];
+      if (!entry) continue;
+      if (field.tip === undefined) field.tip = entry.text;
+      if (field.example === undefined) field.example = entry.example || '';
+    }
+  }
+}
+
+[IMAGE_SECTIONS, VIDEO_SECTIONS, MUSIC_SECTIONS].forEach(applyTips);
+
 export function sectionsFor(kind) {
   return REGISTRY[kind] || [];
 }

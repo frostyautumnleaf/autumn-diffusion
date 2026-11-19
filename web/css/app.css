@@ -635,6 +635,13 @@ input[type="range"]::-moz-range-thumb {
   display: grid; place-items: center; width: 100%; height: 100%;
   color: var(--text-faint); opacity: 0.65;
 }
+/* Audio has no picture, so history and the session list show a static waveform. */
+.wave-thumb {
+  width: 76%; height: 42%; display: block; color: var(--text-mute); opacity: 0.8;
+  transition: color var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+.wave-thumb rect { fill: currentColor; }
+.hist-card:hover .wave-thumb, .session-item:hover .wave-thumb { color: var(--accent); opacity: 1; }
 .session-main { min-width: 0; }
 .session-title {
   font-size: 11.5px; color: var(--text); font-weight: 540;
@@ -674,7 +681,8 @@ body.history-collapsed .history-body { display: none; }
   align-items: flex-start;
 }
 .hist-card {
-  position: relative; flex: none; width: 132px;
+  position: relative; flex: none; width: 132px; max-height: 100%;
+  display: flex; flex-direction: column;
   border-radius: var(--radius);
   border: 1px solid var(--line);
   background: var(--bg-2);
@@ -685,12 +693,12 @@ body.history-collapsed .history-body { display: none; }
 }
 .hist-card:hover { transform: translateY(-3px); border-color: var(--line-strong); box-shadow: var(--shadow); }
 .hist-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-line), var(--shadow); }
-.hist-thumb { position: relative; aspect-ratio: 1 / 1; background: var(--bg-3); display: grid; place-items: center; overflow: hidden; }
+.hist-thumb { position: relative; aspect-ratio: 1 / 1; flex: 0 1 auto; min-height: 0; background: var(--bg-3); display: grid; place-items: center; overflow: hidden; }
 .hist-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--dur-slow) var(--ease-out); }
 .hist-card:hover .hist-thumb img { transform: scale(1.05); }
-.hist-bar { height: 2px; background: var(--bg-4); }
+.hist-bar { height: 2px; background: var(--bg-4); flex: none; }
 .hist-bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width var(--dur-slow) var(--ease-out); }
-.hist-info { padding: 6px 7px 7px; }
+.hist-info { padding: 6px 7px 7px; flex: none; }
 .hist-title { font-size: 10.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hist-meta { display: flex; gap: 5px; align-items: center; margin-top: 4px; font-family: var(--mono); font-size: 9px; color: var(--text-faint); }
 .hist-star {
@@ -1081,3 +1089,69 @@ body.history-collapsed .history-body { display: none; }
 }
 .music-stage .player .icon-btn.play:hover { transform: scale(1.08); }
 .music-stage .player .p-time.right { text-align: right; }
+
+/* Tooltips ---------------------------------------------------------------
+   A tooltip has a title, the explanation, and an optional example. The example is
+   monospaced because it is usually a file name or a prompt fragment. */
+.tip.rich {
+  max-width: 330px; padding: 8px 10px 9px;
+  font-size: 11px; line-height: 1.5; text-align: left;
+  display: grid; gap: 5px;
+}
+.tip .tip-title { font-size: 11.5px; font-weight: 620; color: var(--text); }
+.tip .tip-text { color: var(--text-dim); }
+.tip .tip-example {
+  display: grid; gap: 3px;
+  border-top: 1px solid var(--line); padding-top: 6px;
+}
+.tip .tip-eg-label {
+  font-size: 9px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-faint);
+}
+.tip .tip-example code {
+  font-family: var(--mono); font-size: 10.5px; color: var(--accent);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.has-tip { cursor: help; border-bottom: 1px dotted var(--line-strong); }
+.has-tip:hover { color: var(--text); border-bottom-color: var(--accent-line); }
+
+/* Reset-to-default on a field --------------------------------------------
+   Hidden until the row is hovered, so a panel of 40 rows does not read as a wall
+   of icons. A field whose value differs from the default keeps it visible. */
+.field-reset {
+  width: 18px; height: 18px; flex: 0 0 18px;
+  display: grid; place-items: center;
+  border: 0; background: transparent; color: var(--text-faint);
+  border-radius: 5px; cursor: pointer;
+  opacity: 0; transition: opacity var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+                         transform var(--dur) var(--ease-out);
+}
+.field:hover .field-reset { opacity: 0.7; }
+.field-reset:hover { opacity: 1; color: var(--accent); transform: rotate(-90deg); }
+.field.changed .field-reset { opacity: 0.85; color: var(--accent); }
+.field.changed > .field-top .field-label { color: var(--text-dim); }
+.field.changed > .field-top .field-label::after {
+  content: ''; display: inline-block; width: 4px; height: 4px; border-radius: 50%;
+  background: var(--accent); margin-left: 5px; vertical-align: 2px;
+}
+
+/* App volume -------------------------------------------------------------
+   The slider is narrow until the pointer is on it, which keeps the top bar calm. */
+.volume {
+  display: flex; align-items: center; gap: 1px;
+  padding-right: 3px;
+}
+.volume .vol-btn { color: var(--text-mute); }
+.volume .vol-btn:hover { color: var(--accent); }
+.volume .vol-range {
+  flex: 0 0 0px; width: 0; opacity: 0;
+  transition: flex-basis var(--dur-slow) var(--ease-out), width var(--dur-slow) var(--ease-out),
+              opacity var(--dur) var(--ease);
+}
+.volume:hover .vol-range, .volume:focus-within .vol-range { flex: 0 0 86px; width: 86px; opacity: 1; }
+.volume.muted .vol-btn { color: var(--err); }
+
+/* Job state read-outs ---------------------------------------------------- */
+.m-state { color: var(--text-faint); }
+.m-state.err { color: var(--err); }
+.hist-card.failed { border-color: rgba(248, 113, 113, 0.35); }
+.hist-card.running { border-color: var(--accent-line); }

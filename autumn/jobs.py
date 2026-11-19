@@ -750,13 +750,22 @@ class JobRunner:
                                          "files": files, "elapsed": meta.get("elapsed", 0)})
 
     async def _on_music_audio(self, job: Job, event: dict) -> None:
-        """A freshly decoded VAE tile: push its peaks so the waveform grows live."""
+        """A freshly decoded VAE tile: push its peaks so the waveform grows live.
+
+        The bucket rate travels with the peaks, and so does the URL of the growing
+        WAV file, so the part that has already decoded can be listened to while the
+        rest of the track is still being synthesised.
+        """
         await self._emit("audio", {
             "job_id": job.id,
             "start": float(event.get("start") or 0.0),
             "duration": float(event.get("duration") or 0.0),
             "sample_rate": int(event.get("sample_rate") or 48000),
             "peaks": event.get("peaks") or [],
+            "peaks_per_second": float(event.get("peaks_per_second") or 25),
+            "url": event.get("url") or "",
+            "revision": int(event.get("revision") or 0),
+            "buffered": float(event.get("buffered") or 0.0),
         })
 
     # ---------------------------------------------------------------- wildcards
