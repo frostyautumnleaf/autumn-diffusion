@@ -736,7 +736,10 @@ class JobRunner:
             self.history.update(job_id, status=status, error=message, finished_at=_now())
             self._active.pop(job_id, None)
             await self._emit("job_error", {"job_id": job_id, "error": message,
-                                          "stage": event.get("stage", "")})
+                                          "stage": event.get("stage", ""),
+                                          # Set when a python package is missing from
+                                          # .venv-music; the browser offers to install it.
+                                          "module": event.get("module", "")})
             return
         if kind == "done":
             files = event.get("files") or []

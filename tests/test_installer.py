@@ -229,3 +229,37 @@ def test_starter_wildcards_are_written_once(home):
 
     assert first > 0 and second == 0
     assert (home.wildcards_dir / "mood.txt").read_text(encoding="utf-8").count("\n") > 1
+
+
+# ------------------------------------------------ one-click dependency fix
+def test_a_missing_import_names_the_package_to_install():
+    """A ``ModuleNotFoundError`` names the import, which is not always the package."""
+    assert installer.resolve_distribution("tiktoken") == "tiktoken"
+    assert installer.resolve_distribution("PIL") == "Pillow"
+    assert installer.resolve_distribution("yaml") == "PyYAML"
+    assert installer.resolve_distribution("huggingface_hub") == "huggingface-hub"
+    # An import this list does not know is still installable by name.
+    assert installer.resolve_distribution("some_new_thing") == "some_new_thing"
+
+
+def test_the_modules_that_come_from_a_clone_are_not_pip_problems():
+    assert installer.resolve_distribution("yue2") == ""
+    assert installer.resolve_distribution("yue2.pipeline") == ""
+    assert installer.resolve_distribution("comfy.utils") == ""
+    assert installer.resolve_distribution("") == ""
+    assert installer.resolve_distribution("..\\evil") == ""
+
+
+async def test_a_missing_music_package_is_pipped_into_the_music_venv(installer_for):
+    """The fix lands in ``.venv-music``: nothing is installed system-wide."""
+    instance, runner, _log = installer_for()
+
+    result = await instance.install_music_packages(["tiktoken"], report=lambda message: None)
+
+    assert "tiktoken" in result
+    install = [call for call in runner.calls
+               if "-m" in call and "pip" in call and "install" in call]
+    assert install, "expected a pip install to run"
+    assert "tiktoken" in install[-1]
+    # The interpreter is the music venv, never the dashboard's or the system one.
+    assert install[-1][0].endswith(".venv-music/bin/python")

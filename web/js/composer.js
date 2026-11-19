@@ -18,8 +18,46 @@ const PLACEHOLDERS = {
     + 'and drop a picture here to condition on it.',
   video: 'Describe the shot: subject, motion, camera, lighting. Drop an image or a video here for '
     + 'image-to-video, video-to-video or reference work.',
-  music: 'Style and feel of the track. Lyrics go in the Lyrics field of the Song section.',
+  music: '[Verse]\nWrite the words here. Blank lines separate lines.\n[Chorus]\n…',
 };
+
+/**
+ * Which form field the main text box writes to.
+ *
+ * Image and video generate from a prompt. YuE takes a style description plus
+ * lyrics, and the lyrics are the long text a person types, so on the music tab
+ * the composer owns `lyrics` and the sidebar owns the style description.
+ */
+const PRIMARY_FIELD = { image: 'prompt', video: 'prompt', music: 'lyrics' };
+
+const PRIMARY_LABEL = { image: 'Prompt', video: 'Prompt', music: 'Lyrics' };
+
+/** Form field the main text box of `kind` writes to. */
+export function fieldFor(kind) {
+  return PRIMARY_FIELD[kind] || 'prompt';
+}
+
+/** Display name of the main text box of `kind`. */
+export function labelFor(kind) {
+  return PRIMARY_LABEL[kind] || 'Prompt';
+}
+
+/**
+ * Why a generation cannot start, or null when it can.
+ *
+ * YuE can make an instrumental out of a style description alone, so the music
+ * tab does not insist on lyrics.
+ */
+export function missingPrimary(kind, params) {
+  const text = String((params || {})[fieldFor(kind)] || '').trim();
+  if (text) return null;
+  if (kind === 'music') {
+    return String((params || {}).style || '').trim()
+      ? null
+      : 'Write a style description, or lyrics for a song with vocals';
+  }
+  return 'Write a prompt first';
+}
 
 /** Rough CLIP-ish token count: commas and words, ignoring weighting syntax. */
 export function tokenCount(text) {
@@ -39,6 +77,10 @@ export class Composer {
   constructor(root, kind) {
     this.root = root;
     this.kind = kind;
+    this.field = fieldFor(kind);
+    this.label = labelFor(kind);
+    // YuE has no negative prompt, so the music tab never shows one.
+    this.hasNegative = kind !== 'music';
     this.negativeOpen = false;
     mounted.set(kind, this);
     this.render();
@@ -58,7 +100,7 @@ export class Composer {
    * would otherwise generate with the previous prompt.
    */
   flush() {
-    if (this.promptBox) state.setFormValue(this.kind, 'prompt', this.promptBox.value);
+    if (this.promptBox) state.setFormValue(this.kind, this.field, this.promptBox.value);
     if (this.negativeBox) state.setFormValue(this.kind, 'negative', this.negativeBox.value);
   }
 
@@ -74,7 +116,7 @@ export class Composer {
     box.focus();
     const caret = start + glue.length + text.length;
     box.setSelectionRange(caret, caret);
-    state.setFormValue(this.kind, target === 'negative' ? 'negative' : 'prompt', box.value);
+    state.setFormValue(this.kind, target === 'negative' ? 'negative' : this.field, box.value);
     this.updateMeta();
   }
 
@@ -86,28 +128,33 @@ export class Composer {
     this.promptBox = el('textarea', {
       class: 'composer-input',
       placeholder: PLACEHOLDERS[this.kind] || PLACEHOLDERS.image,
-      spellcheck: 'false',
-      rows: this.kind === 'music' ? 4 : 5,
-      dataset: { field: 'prompt' },
+      spellcheck: this.kind === 'music' ? 'true' : 'false',
+      rows: this.kind === 'music' ? 8 : 5,
+      dataset: { field: this.field },
+      'aria-label': this.label,
       oninput: debounce((event) => {
-        state.setFormValue(this.kind, 'prompt', event.target.value);
+        state.setFormValue(this.kind, this.field, event.target.value);
         this.updateMeta();
       }, 220),
     });
-    this.promptBox.value = this.form.prompt || state.formValue(this.kind, 'prompt') || '';
+    this.promptBox.value = this.form[this.field]
+      || state.formValue(this.kind, this.field) || '';
 
-    this.negativeBox = el('textarea', {
-      class: 'composer-input composer-neg',
-      placeholder: 'Negative prompt: what to keep out of the frame.',
-      spellcheck: 'false',
-      rows: 2,
-      dataset: { field: 'negative' },
-      oninput: debounce((event) => {
-        state.setFormValue(this.kind, 'negative', event.target.value);
-        this.updateMeta();
-      }, 220),
-    });
-    this.negativeBox.value = state.formValue(this.kind, 'negative') || '';
+    this.negativeBox = null;
+    if (this.hasNegative) {
+      this.negativeBox = el('textarea', {
+        class: 'composer-input composer-neg',
+        placeholder: 'Negative prompt: what to keep out of the frame.',
+        spellcheck: 'false',
+        rows: 2,
+        dataset: { field: 'negative' },
+        oninput: debounce((event) => {
+          state.setFormValue(this.kind, 'negative', event.target.value);
+          this.updateMeta();
+        }, 220),
+      });
+      this.negativeBox.value = state.formValue(this.kind, 'negative') || '';
+    }
 
     this.attachStrip = el('div', { class: 'attach-strip' });
     this.renderAttachments();
@@ -116,7 +163,9 @@ export class Composer {
     this.box.appendChild(this.attachStrip);
     this.box.appendChild(el('div', {
       class: 'drop-hint',
-      text: 'Drop an image, video or audio file to attach it',
+      text: this.kind === 'music'
+        ? 'Drop an audio file to attach it'
+        : 'Drop an image, video or audio file to attach it',
     }));
 
     this.root.appendChild(this.box);
@@ -135,36 +184,53 @@ export class Composer {
     const meta = el('div', { class: 'composer-meta' });
     this.metaNode = meta;
 
-    const row = el('div', { class: 'composer-foot' }, [
-      meta,
-      el('div', { class: 'grow' }),
+    const tools = [
       tool(this.kind === 'music' ? 'wave' : 'shuffle', 'Insert a wildcard', () => this.pickWildcard()),
       tool('dice', 'Randomise the seed', () => {
         const seed = Math.floor(Math.random() * 4294967295);
         state.setForm(this.kind, { seed, random_seed: true });
         toast(`Seed ${seed}`, { kind: 'info', timeout: 1400 });
       }),
-      tool(this.negativeOpen ? 'chevron_up' : 'chevron_down', 'Negative prompt', () => {
+    ];
+    if (this.hasNegative) {
+      tools.push(tool(this.negativeOpen ? 'chevron_up' : 'chevron_down', 'Negative prompt', () => {
         this.negativeOpen = !this.negativeOpen;
         this.render();
-      }),
-      tool('expand', 'Open the large editor', () => this.openBigEditor()),
-      tool('branch', 'Presets', (event) => this.openPresets(event.currentTarget)),
-      tool('copy', 'Copy the prompt', () => {
-        copyText(this.promptBox.value).then(() => toast('Prompt copied', { kind: 'ok', timeout: 1200 }));
-      }),
+      }));
+    }
+    tools.push(tool('expand', `Open the large ${this.label.toLowerCase()} editor`,
+      () => this.openBigEditor()));
+    tools.push(tool('branch', 'Presets', (event) => this.openPresets(event.currentTarget)));
+    tools.push(tool('copy', `Copy the ${this.label.toLowerCase()}`, () => {
+      copyText(this.promptBox.value).then(() => toast(`${this.label} copied`,
+        { kind: 'ok', timeout: 1200 }));
+    }));
+
+    const row = el('div', { class: 'composer-foot' }, [
+      meta,
+      el('div', { class: 'grow' }),
+      ...tools,
     ]);
-    if (this.negativeOpen) this.promptBox.after(this.negativeBox);
+    if (this.negativeOpen && this.negativeBox) this.promptBox.after(this.negativeBox);
     return row;
   }
 
   updateMeta() {
     if (!this.metaNode) return;
-    const tokens = tokenCount(this.promptBox.value);
-    const negative = this.negativeOpen ? tokenCount(this.negativeBox.value) : 0;
+    const text = this.promptBox.value;
+    const tokens = tokenCount(text);
+    const negative = this.negativeOpen && this.negativeBox
+      ? tokenCount(this.negativeBox.value) : 0;
     const attachments = (this.form.attachments || []).length;
     clear(this.metaNode);
-    this.metaNode.appendChild(el('span', { text: `${tokens} tok` }));
+    if (this.kind === 'music') {
+      // YuE reads the lyric lines as the arrangement, so lines are the useful count.
+      const lines = text.split('\n').filter((line) => line.trim()).length;
+      this.metaNode.appendChild(el('span', { text: `${lines} line${lines === 1 ? '' : 's'}` }));
+      this.metaNode.appendChild(el('span', { text: `· ${tokens} tok` }));
+    } else {
+      this.metaNode.appendChild(el('span', { text: `${tokens} tok` }));
+    }
     if (negative) this.metaNode.appendChild(el('span', { text: `· ${negative} neg` }));
     if (attachments) this.metaNode.appendChild(el('span', { text: `· ${attachments} attached` }));
     const wildcards = (state.wildcards || []).length;
@@ -172,10 +238,10 @@ export class Composer {
   }
 
   syncValues() {
-    const prompt = state.formValue(this.kind, 'prompt') || '';
-    const negative = state.formValue(this.kind, 'negative') || '';
-    if (this.promptBox && document.activeElement !== this.promptBox && this.promptBox.value !== prompt) {
-      this.promptBox.value = prompt;
+    const value = state.formValue(this.kind, this.field) || '';
+    const negative = this.negativeBox ? state.formValue(this.kind, 'negative') || '' : '';
+    if (this.promptBox && document.activeElement !== this.promptBox && this.promptBox.value !== value) {
+      this.promptBox.value = value;
     }
     if (this.negativeBox && document.activeElement !== this.negativeBox
       && this.negativeBox.value !== negative) {
@@ -335,20 +401,25 @@ export class Composer {
     const body = el('div', { class: 'col', style: { gap: '10px' } });
     const prompt = el('textarea', { class: 'textarea', rows: 12, spellcheck: 'false' });
     prompt.value = this.promptBox.value;
-    const negative = el('textarea', { class: 'textarea', rows: 5, spellcheck: 'false' });
-    negative.value = this.negativeBox.value;
-    body.appendChild(el('div', { class: 'sub-label', text: 'Prompt' }));
+    body.appendChild(el('div', { class: 'sub-label', text: this.label }));
     body.appendChild(prompt);
-    body.appendChild(el('div', { class: 'sub-label', text: 'Negative prompt' }));
-    body.appendChild(negative);
+    let negative = null;
+    if (this.hasNegative) {
+      negative = el('textarea', { class: 'textarea', rows: 5, spellcheck: 'false' });
+      negative.value = this.negativeBox ? this.negativeBox.value : '';
+      body.appendChild(el('div', { class: 'sub-label', text: 'Negative prompt' }));
+      body.appendChild(negative);
+    }
     modal({
-      title: 'Prompt editor',
-      icon: 'wand',
+      title: `${this.label} editor`,
+      icon: this.kind === 'music' ? 'music' : 'wand',
       width: 760,
       body,
       actions: [{
         label: 'Apply', kind: 'primary', run: (close) => {
-          state.setForm(this.kind, { prompt: prompt.value, negative: negative.value });
+          const patch = { [this.field]: prompt.value };
+          if (negative) patch.negative = negative.value;
+          state.setForm(this.kind, patch);
           this.render();
           close();
         },

@@ -59,6 +59,26 @@ def log_line(text: str) -> None:
     emit({"event": "log", "line": str(text).rstrip("\n")})
 
 
+def error_payload(exc: BaseException) -> dict[str, Any]:
+    """Build the fields of an ``error`` event from an exception.
+
+    A missing module gets its import name reported separately, so the dashboard
+    can offer to pip install it into ``.venv-music`` instead of leaving the user
+    with a stack trace.
+    """
+    payload: dict[str, Any] = {
+        "error": f"{exc.__class__.__name__}: {exc}",
+        "traceback": traceback.format_exc(limit=6),
+    }
+    if isinstance(exc, ModuleNotFoundError):
+        missing = str(getattr(exc, "name", "") or "").split(".")[0]
+        if missing:
+            payload["module"] = missing
+            payload["error"] = (f"{missing} is missing from the music environment "
+                                f"(.venv-music). {exc}")
+    return payload
+
+
 # --------------------------------------------------------------------- stub
 class StubPipeline:
     """Deterministic stand-in for :class:`yue2.YuE2Pipeline`."""
@@ -632,8 +652,7 @@ class Runner:
             emit({"event": "error", "job_id": job_id, "error": "cancelled", "cancelled": True})
         except Exception as exc:  # noqa: BLE001 - report, never die
             emit({"event": "error", "job_id": job_id, "stage": CURRENT_STAGE["name"],
-                  "error": f"{exc.__class__.__name__}: {exc}",
-                  "traceback": traceback.format_exc(limit=6)})
+                  **error_payload(exc)})
         finally:
             self.cancel.discard(job_id)
             self.current = None

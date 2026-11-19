@@ -329,3 +329,26 @@ async def _wait_for(events: list[dict], name: str, job_id: str, timeout: float =
         await asyncio.sleep(0.05)
     raise AssertionError(f"no {name!r} event for {job_id}; saw "
                          f"{[e.get('event') for e in events][:40]}")
+
+
+# ------------------------------------------------------- reported failures
+def test_a_missing_module_is_reported_as_an_installable_package():
+    """``No module named 'tiktoken'`` should reach the browser as one click."""
+    from autumn.music_worker import error_payload
+
+    payload = error_payload(ModuleNotFoundError("No module named 'tiktoken'",
+                                               name="tiktoken"))
+
+    assert payload["module"] == "tiktoken"
+    assert "tiktoken" in payload["error"]
+    assert ".venv-music" in payload["error"]
+
+
+def test_an_ordinary_failure_keeps_just_its_message():
+    from autumn.music_worker import error_payload
+
+    payload = error_payload(RuntimeError("CUDA out of memory"))
+
+    assert "module" not in payload
+    assert payload["error"] == "RuntimeError: CUDA out of memory"
+    assert payload["traceback"]

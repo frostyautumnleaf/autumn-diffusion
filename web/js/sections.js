@@ -906,15 +906,10 @@ const MUSIC_SECTIONS = [
       : (ctx.get('lyrics') ? `${(ctx.get('lyrics') || '').split('\n').length} lines` : 'no lyrics')),
     fields: [
       {
-        key: 'style', type: 'area', label: 'Style description', rows: 3,
+        key: 'style', type: 'area', label: 'Style description', rows: 4,
         placeholder: '90s british rock, male vocal, driving drums, melodic bass…',
-        help: 'Genre, era, instruments, voice. YuE reads this as the generation condition.',
-      },
-      {
-        key: 'lyrics', type: 'code', label: 'Lyrics', rows: 12,
-        placeholder: '[Intro]\n[Verse]\nline one\nline two\n[Chorus]\n…',
-        when: (ctx) => !ctx.get('instrumental'),
-        help: 'Section tags in square brackets guide the arrangement. Blank lines separate lines.',
+        help: 'Genre, era, instruments, voice. YuE reads this as the generation condition. '
+          + 'The words of the song go in the box under the waveform.',
       },
       {
         key: 'instrumental', type: 'toggle', label: 'Instrumental',

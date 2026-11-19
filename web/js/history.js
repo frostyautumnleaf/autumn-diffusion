@@ -138,7 +138,7 @@ export class History {
       class: `hist-card ${active ? 'active' : ''}`,
       dataset: { job: job.id },
       title: `${job.title || job.prompt || job.id} — ${job.status}`,
-      onclick: () => state.setUI({ selectedJob: job.id }),
+      onclick: () => selectJob(job),
       ondblclick: () => openJob(job),
     }, [
       el('div', { class: 'hist-thumb' }, [
@@ -214,6 +214,20 @@ export function openJob(job) {
     ],
     actions: [{ label: 'Run again', icon: 'refresh', run: () => rerun(job) }],
   });
+}
+
+/**
+ * Make `job` the selected result, moving to its tab if the open tab shows a
+ * different kind. Selection and view have to agree, otherwise the outline moves
+ * while the stage keeps showing something else.
+ */
+export function selectJob(job) {
+  const patch = { selectedJob: job.id };
+  const kind = job.kind;
+  if (kind && kind !== state.ui.tab && ['image', 'video', 'music'].includes(kind)) {
+    patch.tab = kind;
+  }
+  state.setUI(patch);
 }
 
 export function loadIntoForm(job) {

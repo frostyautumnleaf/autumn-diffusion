@@ -295,3 +295,34 @@ async def test_missing_thumbnails_are_written_at_startup(home, settings):
         assert await context.runner.backfill_thumbs() == 0
     finally:
         await context.close()
+
+
+async def test_a_missing_music_module_can_be_installed_from_the_error(home, settings, monkeypatch):
+    """The browser's "Install tiktoken" button posts here; pip runs in .venv-music."""
+    client, context = await open_app(settings)
+    seen: list[list[str]] = []
+
+    async def fake_install(packages, *, report=None):
+        seen.append(list(packages))
+        if report:
+            report(f"Installing {', '.join(packages)} into .venv-music")
+        return f"installed {', '.join(packages)}"
+
+    monkeypatch.setattr(context.installer, "install_music_packages", fake_install)
+    try:
+        response = await client.post("/api/music",
+                                     json={"action": "install_deps", "modules": ["tiktoken"]})
+        body = await response.json()
+        assert response.status == 200
+        assert body["ok"] is True
+        assert body["installed"] == ["tiktoken"]
+        assert seen == [["tiktoken"]]
+
+        # yue2 comes from the clone, so pip is not the answer and is refused.
+        refused = await client.post("/api/music", json={"action": "install_deps",
+                                                       "modules": ["yue2"]})
+        assert refused.status == 400
+        assert seen == [["tiktoken"]]
+    finally:
+        await client.close()
+        await context.close()

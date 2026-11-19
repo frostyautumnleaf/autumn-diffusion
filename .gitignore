@@ -15,6 +15,9 @@ dist/
 # Engines cloned by the installer (ComfyUI, YuE, custom nodes)
 engine/
 
+# Downloaded weights and the Hugging Face cache (inside the program directory)
+models/
+
 # Runtime state: config, history database, cache, uploads, logs, outputs
 data/
 logs/

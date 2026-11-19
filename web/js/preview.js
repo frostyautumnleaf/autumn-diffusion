@@ -32,6 +32,9 @@ export class Stage {
     state.on(TOPICS.jobs, () => this.syncJob());
     state.on(TOPICS.ui, (patch) => {
       if (patch && patch.stageView) { this.view = patch.stageView; this.render(); }
+      // Clicking a result in the sidebar or the history strip shows it here,
+      // unless a generation owns the stage.
+      if (patch && patch.selectedJob !== undefined) this.syncJob();
     });
   }
 

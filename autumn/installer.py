@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 import platform
+import re
 import shutil
 import sys
 import time
@@ -50,6 +51,9 @@ MUSIC_REQUIREMENTS = (
     "transformers==4.52.3",
     "accelerate",
     "sentencepiece",
+    # YuE2 reads its lyric tokenizer out of qwen.tiktoken in the model repo, and
+    # yue2/tokenization_yue2.py imports tiktoken directly to do it.
+    "tiktoken>=0.5.1",
     "bitsandbytes",
     "scipy",
     "librosa",
@@ -64,6 +68,54 @@ MUSIC_REQUIREMENTS = (
 )
 #: Extra packages the dashboard itself needs, installed into ``.venv``.
 APP_REQUIREMENTS = ("aiohttp>=3.9", "Pillow>=10", "packaging")
+
+#: Import name -> PyPI distribution, for the modules a music job can be missing.
+#: A ``ModuleNotFoundError`` names the import, which is not always the package.
+MODULE_DISTRIBUTIONS = {
+    "accelerate": "accelerate",
+    "argbind": "argbind",
+    "cv2": "opencv-python",
+    "einops": "einops",
+    "huggingface_hub": "huggingface-hub",
+    "librosa": "librosa",
+    "loguru": "loguru",
+    "numba": "numba",
+    "numpy": "numpy",
+    "PIL": "Pillow",
+    "pydub": "pydub",
+    "resampy": "resampy",
+    "safetensors": "safetensors",
+    "scipy": "scipy",
+    "sentencepiece": "sentencepiece",
+    "soundfile": "soundfile",
+    "tiktoken": "tiktoken",
+    "torch": "torch",
+    "torchaudio": "torchaudio",
+    "torchvision": "torchvision",
+    "transformers": "transformers",
+    "yaml": "PyYAML",
+}
+
+_PACKAGE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9._-]{0,63}$")
+
+#: Imports that pip cannot fix: they come from the engines this program clones.
+LOCAL_MODULES = {"yue2", "autumn", "comfy", "nodes", "folder_paths", "server"}
+
+
+def resolve_distribution(module: str) -> str:
+    """Return the distribution to pip install for an import name, or "".
+
+    Unknown names are allowed through when they look like a package name, so a
+    module missing from a future YuE release is still one click away. Names that
+    live in the cloned engines answer empty, because the fix there is to clone
+    the engine, not to pull an unrelated package off PyPI.
+    """
+    name = str(module or "").strip().split(".")[0]
+    if not name or name in LOCAL_MODULES:
+        return ""
+    if name in MODULE_DISTRIBUTIONS:
+        return MODULE_DISTRIBUTIONS[name]
+    return name if _PACKAGE_RE.match(name) else ""
 
 ProgressFn = Callable[[str, str, float], None]
 
@@ -427,6 +479,26 @@ class Installer:
         if code != 0:
             raise RuntimeError(f"music requirements failed: {out[-500:]}")
         return "music environment ready"
+
+    async def install_music_packages(self, packages: list[str], *,
+                                     report: Callable[[str], None] | None = None) -> str:
+        """Install single packages into ``.venv-music``.
+
+        Used by the one-click fix for ``ModuleNotFoundError`` from a music job:
+        an environment installed before a dependency was added is otherwise
+        stuck behind a full YuE reinstall. Names are validated by the caller.
+        """
+        report = report or (lambda message: None)
+        python = LAYOUT.music_python
+        if not python.is_file():
+            await self.ensure_venv(LAYOUT.music_venv_dir, report=report)
+        report(f"Installing {', '.join(packages)} into {LAYOUT.music_venv_dir.name}")
+        code, out, _ = await self.runner.run(
+            [str(python), "-m", "pip", "install", "--disable-pip-version-check", *packages],
+            cwd=LAYOUT.root, timeout=1800)
+        if code != 0:
+            raise RuntimeError(f"pip install failed: {out[-500:]}")
+        return f"installed {', '.join(packages)}"
 
     def ensure_folders(self, *, report: Callable[[str], None] | None = None) -> str:
         """Create model folders, data dirs and starter wildcards."""

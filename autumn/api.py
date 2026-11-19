@@ -22,7 +22,7 @@ from . import wildcards
 from .assets import safe_name
 from .comfy_client import ComfyError
 from .config import split_args
-from .installer import seed_starter_wildcards
+from .installer import resolve_distribution, seed_starter_wildcards
 from .log import RING, get
 from .paths import LAYOUT, MODEL_FOLDERS, rel
 from .system import SystemInfo
@@ -535,6 +535,24 @@ class Api:
                 "music": True,
                 "seedvr": bool(self.ctx.settings.features()["seedvr"])})
             return ok({"started": True})
+        if action == "install_deps":
+            # One-click fix for ModuleNotFoundError out of a music job: pip the
+            # missing distribution into .venv-music and let the next try run.
+            modules = body.get("modules") or body.get("packages") or []
+            if isinstance(modules, str):
+                modules = [modules]
+            names: list[str] = []
+            for module in modules:
+                dist = resolve_distribution(str(module))
+                if dist and dist not in names:
+                    names.append(dist)
+            if not names:
+                return fail("no installable package name given")
+            installer = self.ctx.installer
+            result = await self._track("music-deps", lambda notify: installer.install_music_packages(
+                names, report=notify))
+            return ok({"installed": names, "detail": result,
+                       "music": self.ctx.music.info()})
         return ok({"music": self.ctx.music.info()})
 
     # ----------------------------------------------------------------- assets

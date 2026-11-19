@@ -7,7 +7,7 @@ import { api } from './api.js';
 import { icon } from './icons.js';
 import { toast, menu } from './components.js';
 import { el, clear, mediaUrl, baseName, clockTime, seconds as secs } from './util.js';
-import { thumbNode, loadIntoForm, openJob } from './history.js';
+import { thumbNode, loadIntoForm, openJob, selectJob } from './history.js';
 
 export class Sidebar {
   constructor(root) {
@@ -15,6 +15,19 @@ export class Sidebar {
     this.render();
     state.on(TOPICS.jobs, () => this.renderList());
     state.on(TOPICS.state, () => this.render());
+    // The selection outline has to follow clicks, and selecting is a UI change
+    // rather than a job change, so this listens on its own topic.
+    state.on(TOPICS.ui, (patch) => {
+      if (patch && patch.selectedJob !== undefined) this.syncActive();
+    });
+  }
+
+  /** Move the selection outline to the item the stage is showing. */
+  syncActive() {
+    if (!this.list) return;
+    for (const node of this.list.querySelectorAll('.session-item')) {
+      node.classList.toggle('active', node.dataset.job === state.ui.selectedJob);
+    }
   }
 
   render() {
@@ -64,7 +77,7 @@ export class Sidebar {
     const node = el('div', {
       class: `session-item ${state.ui.selectedJob === job.id ? 'active' : ''}`,
       dataset: { job: job.id },
-      onclick: () => state.setUI({ selectedJob: job.id }),
+      onclick: () => selectJob(job),
       ondblclick: () => openJob(job),
     }, [
       el('div', { class: 'session-thumb' }, [thumbNode(job, 18)]),

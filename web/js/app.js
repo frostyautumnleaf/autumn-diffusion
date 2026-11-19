@@ -11,7 +11,7 @@ import { Socket } from './ws.js';
 import { icon } from './icons.js';
 import { toast, menu } from './components.js';
 import { Panel } from './panel.js';
-import { Composer } from './composer.js';
+import { Composer, missingPrimary } from './composer.js';
 import { Stage } from './preview.js';
 import { MusicStage } from './musicstage.js';
 import { History } from './history.js';
@@ -343,8 +343,9 @@ class App {
     const entry = this.composers.get(kind);
     if (entry && entry.instance && entry.instance.flush) entry.instance.flush();
     const params = this.collectParams(kind);
-    if (!params.prompt || !String(params.prompt).trim()) {
-      toast('Write a prompt first', { kind: 'warn', timeout: 2600 });
+    const problem = missingPrimary(kind, params);
+    if (problem) {
+      toast(problem, { kind: 'warn', timeout: 3200 });
       const composer = this.composers.get(kind);
       if (composer && composer.instance.promptBox) composer.instance.promptBox.focus();
       return;
@@ -568,7 +569,26 @@ class App {
     // Submit-time validation failures are toasted from the HTTP response by the
     // client that posted the job; toasting again here would show it twice.
     if (data.submit) return;
+    // A music job that is missing a python package is one click from working.
+    const missing = String(data.module || '');
+    if (missing) {
+      toast(`${missing} is missing from the music environment (.venv-music).`, {
+        kind: 'err', title: 'Missing package', timeout: 0,
+        action: { label: `Install ${missing}`, run: () => this.installMissingPackage(missing) },
+      });
+      return;
+    }
     toast(`${data.error || 'Generation failed'}`, { kind: 'err', timeout: 9000 });
+  }
+
+  async installMissingPackage(name) {
+    toast(`Installing ${name} into .venv-music…`, { kind: 'info', timeout: 5000 });
+    try {
+      await api.musicAction('install_deps', { modules: [name] });
+      toast(`${name} installed. Generate the track again.`, { kind: 'ok', timeout: 7000 });
+    } catch (err) {
+      toast(err.message || 'Install failed', { kind: 'err', timeout: 9000 });
+    }
   }
 
   onInstall(data) {
