@@ -6,10 +6,11 @@
 
 import { state, TOPICS } from './state.js';
 import { icon } from './icons.js';
-import { toast, lightbox } from './components.js';
+import { toast, lightbox, attachContextMenu } from './components.js';
 import { Waveform } from './waveform.js';
-import { el, clear, baseName, mediaUrl, seconds as secs, dateTime, num } from './util.js';
+import { el, clear, baseName, mediaUrl, seconds as secs, dateTime, num, copyText } from './util.js';
 import { describe, summarise, modelLabel } from './preview.js';
+import { loadIntoForm } from './history.js';
 
 /** YuE pipeline stages, in the order the worker reports them. */
 const STAGES = [
@@ -37,8 +38,8 @@ export class MusicStage {
   /** A `music_status` event from the engine. */
   pushStatus(data) {
     this.status = data || null;
-    if (this.statusNode) this.statusNode.textContent = statusText(data);
     if (data && data.job_id && data.job_id !== this.jobId) return;
+    // The pill in the bar reads this status, so both pieces are refreshed together.
     this.paintFoot();
     this.paintBar();
   }
@@ -46,6 +47,8 @@ export class MusicStage {
   render() {
     clear(this.root);
     this.root.classList.add('stage', 'music-stage');
+    this.barBuilt = false;
+    this.footBuilt = false;
 
     this.bar = el('div', { class: 'stage-bar' });
     this.body = el('div', { class: 'stage-body' });
@@ -59,28 +62,88 @@ export class MusicStage {
     this.root.appendChild(this.body);
     this.root.appendChild(this.foot);
     this.paint();
+    attachContextMenu(this.root, () => this.contextItems());
+  }
+
+  /**
+   * Right-click items for the stage.
+   *
+   * The waveform canvas has its own menu for playback and zoom, so this one covers
+   * the track as a job: its file, its settings and its place in the queue.
+   */
+  contextItems() {
+    const job = this.current();
+    const file = job ? (job.files || [])[0] : null;
+    const running = !!job && (job.status === 'running' || job.status === 'queued');
+    const playing = !!this.waveform.playing;
+    return [
+      { label: playing ? 'Pause the track' : 'Play the track', icon: playing ? 'pause' : 'play',
+        disabled: !this.waveform.jobId, run: () => this.waveform.toggle() },
+      { label: 'Back to the start', icon: 'skip', disabled: !this.waveform.jobId,
+        run: () => this.waveform.seek(0) },
+      { label: 'Stop every track', icon: 'stop', run: () => this.waveform.pauseAll() },
+      { sep: true },
+      { label: 'Open in the viewer', icon: 'expand', disabled: !file, run: () => this.openResult() },
+      { label: 'Download the track', icon: 'download', disabled: !file,
+        run: () => window.open(mediaUrl(file), '_blank') },
+      { sep: true },
+      { label: 'Load these settings into the form', icon: 'sliders_h', disabled: !job,
+        run: () => loadIntoForm(job) },
+      { label: 'Copy the settings as JSON', icon: 'code', disabled: !job,
+        run: () => copyTrackSettings(job) },
+      { label: 'Copy the lyrics', icon: 'copy', disabled: !(job && job.prompt),
+        run: () => copyText(job.prompt || '')
+          .then(() => toast('Lyrics copied', { kind: 'ok', timeout: 1400 }))
+          .catch(() => toast('Could not copy', { kind: 'err' })) },
+      { label: 'Cancel this job', icon: 'stop', danger: true, disabled: !running,
+        run: () => this.cancel() },
+    ];
   }
 
   // ------------------------------------------------------------------ pieces
+  /**
+   * The bar above the stage.
+   *
+   * Built once and patched in place afterwards: a progress event arrives many times
+   * a second, and a rebuild makes the whole strip flicker.
+   */
   paintBar() {
     const job = this.current();
     const running = !!job && (job.status === 'running' || job.status === 'queued');
-    clear(this.bar);
-    this.statusNode = el('span', { class: 'pill ' + (running ? 'run' : (state.musicInstalled ? 'ok' : 'warn')),
-      html: `<span class="dot"></span>${state.musicInstalled ? 'YuE' : 'YuE not installed'}` });
-    this.bar.append(
-      el('span', { class: 'stage-title', text: job ? describe(job) : 'No track selected' }),
-      this.statusNode,
-      el('span', { class: 'grow' }),
-      el('button', {
-        class: 'icon-btn', html: icon('expand', 14), title: 'Open in the viewer',
-        onclick: () => this.openResult(),
-      }),
-      el('button', {
-        class: 'icon-btn danger', html: icon('stop', 14), title: 'Cancel the running job',
-        onclick: () => this.cancel(),
-      }),
-    );
+    if (!this.barBuilt) {
+      clear(this.bar);
+      this.titleNode = el('span', { class: 'stage-title' });
+      this.statusNode = el('span', { class: 'pill' });
+      this.bar.append(
+        this.titleNode,
+        this.statusNode,
+        el('span', { class: 'grow' }),
+        el('button', {
+          class: 'icon-btn', html: icon('expand', 14), title: 'Open in the viewer',
+          onclick: () => this.openResult(),
+        }),
+        el('button', {
+          class: 'icon-btn danger', html: icon('stop', 14), title: 'Cancel the running job',
+          onclick: () => this.cancel(),
+        }),
+      );
+      this.barBuilt = true;
+      this._barText = '';
+      this._barState = '';
+    }
+    const title = job ? describe(job) : 'No track selected';
+    if (title !== this._barText) {
+      this.titleNode.textContent = title;
+      this._barText = title;
+    }
+    const label = statusText(this.status);
+    const flavour = running ? 'run' : (state.musicInstalled ? 'ok' : 'warn');
+    const signature = `${flavour}|${label}`;
+    if (signature !== this._barState) {
+      this.statusNode.className = `pill ${flavour}`;
+      this.statusNode.innerHTML = `<span class="dot"></span>${label}`;
+      this._barState = signature;
+    }
   }
 
   paint() {
@@ -157,41 +220,62 @@ export class MusicStage {
     this.progress.querySelector('.bar').style.width = `${running ? (value || 4) : 0}%`;
   }
 
+  /**
+   * The pipeline strip under the stage.
+   *
+   * Patched rather than rebuilt: five stage chips and one note, with only the fields
+   * that moved written. Rebuilding here made the foot blink on every decoded tile.
+   */
   paintFoot() {
     const job = this.current();
-    clear(this.foot);
+    if (!this.footBuilt) {
+      clear(this.foot);
+      this.strip = el('div', { class: 'stage-strip' });
+      this.stageNodes = STAGES.map((item) => el('span', { class: 'ss-item', title: item.hint }, [
+        el('i', { class: 'dot' }),
+        el('span', { text: item.label }),
+        el('b'),
+      ]));
+      for (const node of this.stageNodes) this.strip.appendChild(node);
+      this.queueNote = el('span', { class: 'queue-note' });
+      this.foot.append(this.strip, this.queueNote);
+      this.footBuilt = true;
+      this._footState = '';
+    }
     if (!job || (job.status !== 'running' && job.status !== 'queued')) {
       const last = state.music && state.music.last_error;
-      this.foot.appendChild(el('span', {
-        class: 'queue-note',
-        text: last ? `YuE error: ${String(last).slice(0, 90)}` : 'YuE worker idles; it loads on the first job.',
-      }));
+      const note = last ? `YuE error: ${String(last).slice(0, 90)}`
+        : 'YuE worker idles; it loads on the first job.';
+      this.strip.style.display = 'none';
+      if (this.queueNote.textContent !== note) this.queueNote.textContent = note;
+      this._footState = '';
       return;
     }
+    this.strip.style.display = '';
     const stageName = String(job.stage || (job.meta && job.meta.stage)
       || (this.status && this.status.stage) || 'plan');
     const index = STAGES.findIndex((item) => item.id === stageName);
-    const strip = el('div', { class: 'stage-strip' });
-    STAGES.forEach((item, position) => {
-      const done = index >= 0 && position < index;
-      const active = item.id === stageName;
-      const raw = Number(job.progress || 0);
-      const value = active ? (raw <= 1 ? raw * 100 : raw) : (done ? 100 : 0);
-      strip.appendChild(el('span', {
-        class: `ss-item ${done ? 'done' : ''} ${active ? 'on' : ''}`,
-        title: item.hint,
-      }, [
-        el('i', { class: 'dot' }),
-        el('span', { text: item.label }),
-        el('b', { text: done ? '' : (active ? `${num(value, 0)}%` : '') }),
-      ]));
-    });
-    this.foot.appendChild(strip);
+    const raw = Number(job.progress || 0);
     const eta = job.eta || (this.status && this.status.eta);
     const bits = [];
     if (eta) bits.push(`~${secs(eta)} left`);
     if (job.elapsed) bits.push(`${secs(job.elapsed)} elapsed`);
-    if (bits.length) this.foot.appendChild(el('span', { class: 'queue-note', text: bits.join(' · ') }));
+    const note = bits.join(' · ');
+    const signature = `${index}|${Math.round(raw)}|${note}`;
+    if (signature === this._footState) return;
+    this._footState = signature;
+    STAGES.forEach((item, position) => {
+      const node = this.stageNodes[position];
+      const done = index >= 0 && position < index;
+      const active = item.id === stageName;
+      const value = active ? (raw <= 1 ? raw * 100 : raw) : (done ? 100 : 0);
+      const className = `ss-item ${done ? 'done' : ''} ${active ? 'on' : ''}`;
+      if (node.className !== className) node.className = className;
+      const shown = done ? '' : (active ? `${num(value, 0)}%` : '');
+      const slot = node.lastElementChild;
+      if (slot.textContent !== shown) slot.textContent = shown;
+    });
+    if (this.queueNote.textContent !== note) this.queueNote.textContent = note;
   }
 
   // ------------------------------------------------------------------ helpers

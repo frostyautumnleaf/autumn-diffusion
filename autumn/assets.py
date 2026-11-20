@@ -107,6 +107,19 @@ def kind_of(name: str) -> str:
     return "file"
 
 
+def _unique_path(folder: Path, name: str, *, overwrite: bool = False) -> Path:
+    """A path in ``folder`` for ``name``, numbered ``stem-2.ext`` when it is taken."""
+    target = folder / str(name)
+    if overwrite or not target.exists():
+        return target
+    stem, suffix = str(name).rsplit(".", 1) if "." in str(name) else (str(name), "")
+    dot = f".{suffix}" if suffix else ""
+    index = 2
+    while (folder / f"{stem}-{index}{dot}").exists():
+        index += 1
+    return folder / f"{stem}-{index}{dot}"
+
+
 def safe_name(name: str) -> str:
     """Strip anything that could escape a directory or confuse a shell."""
     cleaned = re.sub(r"[\\/\x00-\x1f]", "", str(name or "")).strip().strip(".")
@@ -299,6 +312,53 @@ class AssetBrowser:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source), str(destination))
         return {"ok": True, "path": str(destination.relative_to(target_base))}
+
+    def copy(self, category: str, path: str, to_category: str, *, to_root: str = "",
+             to_subfolder: str = "", root: str = "models", name: str = "",
+             overwrite: bool = False) -> dict:
+        """Copy a file between folders, which is how a finished output goes back
+        into ``input`` so it can be used again as an image or video source."""
+        base = self._category_dir(category, root)
+        source = self._inside(base, path)
+        if not source.is_file():
+            return {"ok": False, "error": "not found"}
+        target_root = str(to_root or to_category or "input")
+        target_base = self._category_dir(to_category, target_root)
+        target_dir = self._inside(target_base, to_subfolder)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        file_name = safe_name(name or source.name)
+        target = _unique_path(target_dir, file_name, overwrite=overwrite)
+        shutil.copy2(source, target)
+        relative = str(target.relative_to(target_base))
+        return {"ok": True, "path": relative, "name": relative,
+                "category": to_category, "root": target_root,
+                "type": _folder_type(target_root), "size": target.stat().st_size,
+                "kind": kind_of(target.name), "url": browse_url(target),
+                "original_name": source.name}
+
+    def import_output(self, subfolder: str, filename: str, *, name: str = "",
+                      overwrite: bool = False) -> dict:
+        """Copy a finished engine output into the input folder.
+
+        "Use this result again" needs this: ComfyUI loads sources from ``input``,
+        so an output has to be copied before it can condition another run.
+        Returns the same shape as :meth:`save_upload`, which is what the media
+        dropdowns and the form fields take.
+        """
+        relative = "/".join(part for part in (str(subfolder or ""), str(filename or "")) if part)
+        source = self._inside(LAYOUT.comfy_output, relative)
+        if not source.is_file():
+            raise ValueError("the output file is not on disk")
+        target_dir = self._inside(self.input_dir, "")
+        target_dir.mkdir(parents=True, exist_ok=True)
+        file_name = safe_name(name or source.name)
+        target = _unique_path(target_dir, file_name, overwrite=overwrite)
+        shutil.copy2(source, target)
+        relative_in = str(target.relative_to(target_dir))
+        return {"name": relative_in, "subfolder": "", "type": "input",
+                "original_name": source.name, "size": target.stat().st_size,
+                "path": str(target), "kind": kind_of(target.name),
+                "url": _media_url(relative_in, "input", "")}
 
     def read_text(self, category: str, path: str, *, root: str = "models",
                   max_bytes: int = 200_000) -> dict:

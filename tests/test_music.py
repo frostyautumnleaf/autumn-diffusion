@@ -7,6 +7,7 @@ without a GPU or downloaded weights.
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import struct
 import sys
@@ -390,41 +391,74 @@ def _live_target(url: str, home) -> Path:
     return home.cache_dir / "live" / name
 
 
-async def _audio_with_url(runner, job_id: str, want: int = 2):
-    """Wait until the worker has streamed a tile that carries a playable URL."""
+def _snapshot(path: Path) -> bytes:
+    """Read the live file as it stands this instant; empty if it is already gone."""
+    try:
+        return path.read_bytes()
+    except OSError:
+        return b""
+
+
+async def _audio_with_url(runner, job_id: str, home=None, want: int = 2):
+    """Wait for streamed tiles, keeping the file bytes read alongside each one.
+
+    The stub decodes fast, so the live WAV can be replaced by the finished track
+    between two polls. Reading the bytes in the same step as the tile is reported
+    is what makes the checks below about one moment of the decode, not about how
+    fast the test happens to run.
+    """
     loop = asyncio.get_event_loop()
     deadline = loop.time() + TIMEOUT
-    chunks: list[dict] = []
+    samples: list[tuple[dict, bytes]] = []
     while loop.time() < deadline:
-        chunks = [event for event in runner.test_events
-                  if event.get("event") == "audio" and event.get("job_id") == job_id
-                  and event.get("url")]
-        if len(chunks) >= want:
-            return chunks
+        found = [event for event in runner.test_events
+                 if event.get("event") == "audio" and event.get("job_id") == job_id
+                 and event.get("url")]
+        while len(samples) < len(found):
+            chunk = found[len(samples)]
+            data = _snapshot(_live_target(chunk["url"], home)) if home else b""
+            samples.append((chunk, data))
+        if len(found) >= want:
+            return samples
         await asyncio.sleep(0.02)
-    return chunks
+    return samples
 
 
 async def test_a_live_audio_file_grows_while_the_song_decodes(runner, home):
     """Listening early needs a real WAV, valid at every tile, next to the peaks."""
     runner.settings.set("music.stub_seconds", 2.0)
+    # Tiles ~0.2 s apart, so the decode outlives the asserts that watch it.
+    runner.settings.set("music.stub_stage_seconds", 0.8)
     await runner.start("live-1", {"prompt": "warm pad"})
 
-    chunks = await _audio_with_url(runner, "live-1")
-    assert chunks, "the worker should stream a playable file while the VAE runs"
+    samples = await _audio_with_url(runner, "live-1", home)
+    assert samples, "the worker should stream a playable file while the VAE runs"
+    chunks = [chunk for chunk, _ in samples]
     assert all(_live_target(chunk["url"], home) == _live_target(chunks[0]["url"], home)
                for chunk in chunks)
     path = _live_target(chunks[0]["url"], home)
-    assert path.is_file()
 
     buffered = [float(chunk["buffered"]) for chunk in chunks]
-    assert buffered == sorted(buffered) and buffered[-1] > 0.0
-    with wave.open(str(path)) as reader:
-        assert reader.getframerate() == 48000
-        assert reader.getnchannels() == 2
-        assert reader.getsampwidth() == 2
-        assert reader.getnframes() == pytest.approx(buffered[-1] * 48000, abs=4800)
-        assert reader.getnframes() >= int(chunks[0]["duration"] * 48000)
+    assert buffered == sorted(buffered) and buffered[-1] > buffered[0]
+
+    sizes = [len(data) for _, data in samples if data]
+    assert sizes, "the live file should exist while tiles stream"
+    assert sizes == sorted(sizes), "the live file only ever grows"
+    assert sizes[-1] > 44, "the RIFF header alone is not a playable file"
+
+    for chunk, data in samples:
+        if not data:
+            continue
+        with wave.open(io.BytesIO(data)) as reader:
+            frames = reader.getnframes()
+            assert reader.getframerate() == 48000
+            assert reader.getnchannels() == 2
+            assert reader.getsampwidth() == 2
+            # The file is never behind the edge the tile reported, and never runs
+            # past the length that was asked for.
+            assert frames >= int(chunk["buffered"] * 48000) - 480
+            assert frames >= int(chunk["duration"] * 48000)
+            assert frames <= int(2.0 * 48000) + 480
 
     await _wait_for(runner.test_events, "done", "live-1")
     assert not path.exists(), "the finished track replaces the live file"
@@ -456,3 +490,100 @@ def test_peaks_with_rate_reports_the_grid_it_ended_up_on():
     capped, coarse = peaks_with_rate(tone, rate, 25, 40)
     assert len(capped) == 40
     assert coarse == pytest.approx(10.0, abs=0.01)   # 40 buckets over 4 seconds
+
+
+# Peak grid: the drawing places bars by bucket index, so every tile has to share
+# one grid with the track it belongs to. -----------------------------------
+def _loud_at(total_seconds: float, at: float, rate: int = 48000) -> np.ndarray:
+    """A quiet bed with one loud burst, so a single bucket stands out."""
+    data = np.full((int(rate * total_seconds), 2), 0.02, dtype=np.float32)
+    start = int(at * rate)
+    data[start:start + 1200, :] = 0.9
+    return data
+
+
+def test_peaks_aligned_lay_tiles_on_the_track_grid():
+    """A tile bucketed on its own leaves a silent hole where the next one joins."""
+    from autumn.music_worker import PEAK_BUCKETS_PER_SECOND, peaks_aligned
+
+    rate = 48000
+    data = _loud_at(3.0, 1.0)
+    first = peaks_aligned(data[:rate], rate, 0.0)
+    second = peaks_aligned(data[rate:2 * rate], rate, 1.0)
+    merged = first + second
+
+    assert len(first) == PEAK_BUCKETS_PER_SECOND
+    assert len(merged) == 2 * PEAK_BUCKETS_PER_SECOND
+    loud = [index for index, value in enumerate(merged) if value > 0.5]
+    assert loud == [PEAK_BUCKETS_PER_SECOND]        # bucket 25 is exactly 1 s
+    assert all(value > 0 for value in merged), "the bed is continuous, so no holes"
+
+
+def test_a_misaligned_tile_still_writes_the_right_bucket():
+    """Tiles do not start on bucket boundaries; the grid still has to line up."""
+    from autumn.music_worker import peaks_aligned
+
+    rate = 48000
+    data = _loud_at(3.0, 1.0)
+    offset = 0.99                                      # 0.25 of a bucket early
+    tile = peaks_aligned(data[int(offset * rate):], rate, offset)
+
+    assert tile[0] == pytest.approx(0.02, abs=0.01)   # the bed, not the burst
+    assert tile[1] > 0.5                              # the burst lands in bucket 25
+
+
+def test_a_short_tile_keeps_the_grid_rate():
+    """A tail tile is shorter than one bucket and must not invent its own rate."""
+    from autumn.music_worker import PEAK_BUCKETS_PER_SECOND, peaks_aligned
+
+    rate = 48000
+    data = _loud_at(1.0, 0.0)
+    short = peaks_aligned(data[:2400], rate, 0.0)     # 50 ms
+
+    assert len(short) >= 1
+    assert max(short) > 0.5
+    assert PEAK_BUCKETS_PER_SECOND == 25
+
+
+def test_peak_grid_matches_the_bucket_a_tile_writes():
+    from autumn.music_worker import peak_grid
+
+    assert peak_grid(0.0) == 0
+    assert peak_grid(1.0) == 25
+    assert peak_grid(0.99) == 24
+    assert peak_grid(2.4) == 60
+
+
+async def test_the_finished_envelope_matches_the_rate_it_reports(runner):
+    """`len(peaks) / peaks_per_second` has to be the length of the audio."""
+    await runner.start("grid-2", {"prompt": "steady beat"})
+
+    done = await _wait_for(runner.test_events, "done", "grid-2")
+    peaks = done["peaks"]
+    per_second = float(done["peaks_per_second"])
+
+    assert peaks
+    assert per_second == pytest.approx(25.0, abs=0.05)
+    assert len(peaks) == pytest.approx(done["audio_seconds"] * per_second, abs=2)
+
+
+async def test_live_tiles_cover_the_track_without_gaps(runner):
+    """Merging the streamed tiles the way the browser does must leave no holes."""
+    await runner.start("grid-3", {"prompt": "unbroken hum"})
+    await _wait_for(runner.test_events, "done", "grid-3")
+
+    chunks = [event for event in runner.test_events if event.get("event") == "audio"]
+    assert len(chunks) >= 2
+    merged: list[float] = []
+    for chunk in chunks:
+        start = int(chunk["start_bucket"])
+        if len(merged) < start:
+            merged.extend([0.0] * (start - len(merged)))
+        for index, value in enumerate(chunk["peaks"]):
+            if len(merged) < start + index + 1:
+                merged.extend([0.0] * (start + index + 1 - len(merged)))
+            merged[start + index] = value
+
+    assert merged
+    silent = sum(1 for value in merged if value <= 0.001)
+    assert silent / len(merged) < 0.05, f"{silent} of {len(merged)} buckets are empty"

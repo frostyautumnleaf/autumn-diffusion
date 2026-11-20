@@ -208,6 +208,29 @@ export function menu(anchor, items, { align = 'right', offset = 4, at = null } =
   return node;
 }
 
+/**
+ * Wire a right-click menu to a node.
+ *
+ * `build` returns the items for the menu. Inside a text box the browser menu
+ * (cut, copy, paste, spellcheck) is more useful than an app menu, so the app menu
+ * is skipped there unless Shift is held, which is the one gesture the user has to
+ * remember to get at it.
+ */
+export function attachContextMenu(node, build) {
+  if (!node || typeof build !== 'function') return node;
+  node.addEventListener('contextmenu', (event) => {
+    if (event.defaultPrevented) return;   // a nested handler already owns this right-click
+    const editing = event.target && event.target.closest
+      && event.target.closest('input, textarea, select');
+    if (editing && !event.shiftKey) return;
+    const items = build(event);
+    if (!items || !items.length) return;
+    event.preventDefault();
+    menu(null, items, { at: { x: event.clientX, y: event.clientY } });
+  });
+  return node;
+}
+
 export function closeMenu() {
   document.querySelectorAll('.popover[data-menu]').forEach((node) => {
     if (node._cleanup) node._cleanup();

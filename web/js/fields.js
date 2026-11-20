@@ -1,10 +1,10 @@
 // Field factory: turns declarative specs into the controls used by every tab.
 // Values live in the tab form; every edit writes through to state.setFormValue.
 
-import { el, clear, clamp, debounce, fileName, baseName, matchScore, mediaKind } from './util.js';
+import { el, clear, clamp, debounce, fileName, baseName, matchScore, mediaKind, copyText } from './util.js';
 import { icon } from './icons.js';
 import { state, TOPICS } from './state.js';
-import { menu, promptDialog, toast, attachTooltip } from './components.js';
+import { menu, promptDialog, toast, attachTooltip, attachContextMenu, showTip } from './components.js';
 
 // Path helpers -------------------------------------------------------------
 export function getPath(source, path) {
@@ -836,7 +836,53 @@ function decorate(node, spec, ctx) {
   });
   if (top) top.appendChild(button);
   if (!sameValue(ctx.get(spec.key), def)) node.classList.add('changed');
+  attachContextMenu(node, () => fieldMenu(spec, ctx, def, node));
   return node;
+}
+
+/** Types where clearing the value is a meaningful thing to offer. */
+const CLEARABLE = new Set(['text', 'area', 'code', 'number', 'select', 'slider', 'model', 'file']);
+
+/** The items for the right-click menu of one field. */
+function fieldMenu(spec, ctx, def, node) {
+  const value = ctx.get(spec.key);
+  const changed = !sameValue(value, def);
+  const items = [
+    { label: `Reset to default: ${shown(def)}`, icon: 'refresh', disabled: !changed,
+      run: () => {
+        let copy = def;
+        try { copy = structuredClone(def); } catch (err) { copy = def; }
+        ctx.set(spec.key, copy);
+        node.classList.remove('changed');
+        if (ctx.refresh) ctx.refresh();
+      } },
+  ];
+  const empty = value === undefined || value === null || value === ''
+    || (Array.isArray(value) && !value.length);
+  if (CLEARABLE.has(spec.type) && !empty) {
+    items.push({ label: 'Clear this field', icon: 'x', run: () => {
+      ctx.set(spec.key, Array.isArray(value) ? [] : '');
+      if (ctx.refresh) ctx.refresh();
+    } });
+  }
+  items.push({ sep: true });
+  items.push({ label: 'Copy the value', icon: 'copy', disabled: empty,
+    run: () => copyText(typeof value === 'string' ? value : JSON.stringify(value))
+      .then(() => toast('Copied', { kind: 'ok', timeout: 1400 }))
+      .catch(() => toast('Could not copy', { kind: 'err' })) });
+  items.push({ label: 'Copy the setting name', icon: 'code',
+    run: () => copyText(`${ctx.kind}.${spec.key}`)
+      .then(() => toast(`Copied ${ctx.kind}.${spec.key}`, { kind: 'ok', timeout: 1400 }))
+      .catch(() => toast('Could not copy', { kind: 'err' })) });
+  if (spec.tip || spec.help) {
+    items.push({ sep: true });
+    items.push({ label: 'What does this do?', icon: 'info',
+      run: () => showTip(node, {
+        title: String(spec.label || spec.key), text: spec.tip || String(spec.help || ''),
+        example: spec.example || '',
+      }) });
+  }
+  return items;
 }
 
 /** Build one field from a spec. Returns null when the spec is filtered out. */

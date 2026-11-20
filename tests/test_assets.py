@@ -153,6 +153,55 @@ def test_rename_and_move(browser):
     assert (browser.input_dir / "extras" / "moved.png").exists()
 
 
+def test_copy_leaves_the_source_where_it_was(browser):
+    copied = browser.copy("checkpoints", "v15.safetensors", "vae")
+
+    assert copied["ok"]
+    assert copied["path"] == "v15.safetensors"
+    assert (browser.models_dir / "vae" / "v15.safetensors").stat().st_size == 32
+    assert (browser.models_dir / "checkpoints" / "v15.safetensors").exists()
+
+
+def test_copy_numbers_a_name_that_is_taken(browser):
+    browser.copy("checkpoints", "folder/xl.safetensors", "checkpoints", to_subfolder="")
+    again = browser.copy("checkpoints", "folder/xl.safetensors", "checkpoints")
+
+    assert again["path"] == "xl-2.safetensors"
+    assert (browser.models_dir / "checkpoints" / "xl-2.safetensors").exists()
+
+
+def test_copy_reports_a_missing_source(browser):
+    assert browser.copy("checkpoints", "nope.safetensors", "vae")["ok"] is False
+
+
+def test_import_output_copies_a_result_into_the_input_folder(home, browser, png_bytes):
+    """A finished output has to be copied before ComfyUI can load it again."""
+    output = home.comfy_output / "autumn" / "image"
+    output.mkdir(parents=True, exist_ok=True)
+    (output / "result.png").write_bytes(png_bytes)
+
+    info = browser.import_output("autumn/image", "result.png")
+
+    assert info["name"] == "result.png"
+    assert info["type"] == "input"
+    assert info["kind"] == "image"
+    assert (home.comfy_input / "result.png").read_bytes() == png_bytes
+    assert (output / "result.png").exists()
+
+    again = browser.import_output("autumn/image", "result.png")
+    assert again["name"] == "result-2.png"
+
+
+def test_import_output_refuses_paths_outside_the_output_folder(browser):
+    with pytest.raises(ValueError):
+        browser.import_output("..", "../../etc/passwd")
+
+
+def test_import_output_reports_a_missing_result(browser):
+    with pytest.raises(ValueError):
+        browser.import_output("autumn", "never_ran.png")
+
+
 def test_text_files_round_trip(browser):
     browser.write_text("embeddings", "note.txt", "a training note")
 

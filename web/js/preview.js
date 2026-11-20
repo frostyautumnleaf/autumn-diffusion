@@ -8,9 +8,10 @@
 import { state, TOPICS } from './state.js';
 import { api } from './api.js';
 import { icon } from './icons.js';
-import { toast, lightbox } from './components.js';
-import { el, clear, clamp, num, percent as pct, seconds as secs, mediaUrl, baseName, dateTime } from './util.js';
+import { toast, lightbox, attachContextMenu } from './components.js';
+import { el, clear, clamp, num, percent as pct, seconds as secs, mediaUrl, baseName, dateTime, copyText, mediaKind } from './util.js';
 import { installHqPreview } from './sections.js';
+import { loadIntoForm } from './history.js';
 
 const SOURCE_LABEL = {
   latent2rgb: 'latent2rgb',
@@ -101,6 +102,79 @@ export class Stage {
     this.root.appendChild(this.body);
 
     this.paint();
+    attachContextMenu(this.root, () => this.contextItems());
+  }
+
+  /** Right-click items for the stage: the result, its settings, and the running job. */
+  contextItems() {
+    const job = this.current();
+    const file = job ? (job.files || [])[0] : null;
+    const running = this.isRunning();
+    const fileKind = file ? (file.kind || mediaKind(file.name || file.path || '')) : '';
+    // The field to write belongs to the tab that will show it, so a result opened
+    // from the music tab still lands in the image or video form.
+    const target = ['image', 'video'].includes(state.ui.tab)
+      ? state.ui.tab : (job && ['image', 'video'].includes(job.kind) ? job.kind : '');
+    const items = [
+      { label: 'Open in the viewer', icon: 'expand', disabled: !file, run: () => this.openResult() },
+      { label: 'Download the file', icon: 'download', disabled: !file,
+        run: () => window.open(mediaUrl(file), '_blank') },
+      { sep: true },
+      { group: true, label: 'Use this result again' },
+      { label: 'As the initial image', icon: 'image',
+        disabled: !job || !file || fileKind !== 'image' || !target,
+        run: () => this.useAgain(job, 'init_image') },
+      { label: 'As the first frame', icon: 'frame',
+        disabled: !job || !file || fileKind !== 'image' || !target,
+        run: () => this.useAgain(job, 'source_image') },
+      { label: 'As the source video', icon: 'video',
+        disabled: !job || !file || fileKind !== 'video' || !target,
+        run: () => this.useAgain(job, 'source_video') },
+      { sep: true },
+      { label: 'Load these settings into the form', icon: 'sliders_h', disabled: !job,
+        run: () => loadIntoForm(job) },
+      { label: 'Run it again', icon: 'refresh', disabled: !job,
+        run: async () => {
+          try {
+            await api.rerunJob(job.id);
+            toast('Requeued from the stage', { kind: 'ok' });
+          } catch (err) { toast(err.message, { kind: 'err' }); }
+        } },
+      { label: 'Cancel this job', icon: 'stop', danger: true, disabled: !running,
+        run: () => this.cancel() },
+      { sep: true },
+      { label: 'Copy the prompt', icon: 'copy', disabled: !(job && job.prompt),
+        run: () => copyText(job.prompt || '')
+          .then(() => toast('Prompt copied', { kind: 'ok', timeout: 1400 }))
+          .catch(() => toast('Could not copy', { kind: 'err' })) },
+      { label: 'Copy the settings as JSON', icon: 'code', disabled: !job,
+        run: () => copySettings(job) },
+    ];
+    return items;
+  }
+
+  /**
+   * Copy the finished output into the engine input folder and put it in a field.
+   *
+   * ComfyUI only reads conditioning media from `input`, so the copy is what makes
+   * an image-to-image or video-to-video follow-up possible at all.
+   */
+  async useAgain(job, field) {
+    try {
+      const data = await api.reuseJob(job.id);
+      const info = data.file || {};
+      const formKind = state.ui.tab === 'video' ? 'video' : 'image';
+      if (state.ui.tab !== formKind) state.setUI({ tab: formKind });
+      const items = (state.form(formKind).attachments || []).slice();
+      if (!items.some((item) => item.name === info.name)) {
+        items.push({ name: info.name, kind: info.kind || 'image', url: info.url || '' });
+      }
+      state.setForm(formKind, { [field]: info.name, attachments: items });
+      window.dispatchEvent(new CustomEvent('autumn:refresh'));
+      toast(`Copied into the input folder as ${info.name}`, { kind: 'ok', timeout: 2600 });
+    } catch (err) {
+      toast(err.message, { kind: 'err', timeout: 5000 });
+    }
   }
 
   renderBar() {

@@ -38,7 +38,6 @@ from typing import Any, Callable
 PROTOCOL = 1
 SAMPLE_RATE = 48000                       # YuE2's VAE decodes to 48 kHz stereo
 PEAK_BUCKETS_PER_SECOND = 25
-LIVE_PEAK_LIMIT = 20000                   # bucket ceiling per tile: never rescale a tile
 SEMANTIC_TOKENS_PER_SECOND = 25           # one semantic token is one latent frame
 
 _EMIT_LOCK = threading.Lock()
@@ -479,7 +478,7 @@ class Backend:
                 _write_wav_numpy(path, array, sample_rate)
                 written = str(path)
             log_line(f"FLAC writer unavailable ({exc}); wrote WAV")
-        peaks = compute_peaks(array, sample_rate)
+        peaks, peak_rate = peaks_with_rate(array, sample_rate)
         seconds = array.shape[0] / float(sample_rate)
         meta = {
             "audio_seconds": round(seconds, 2),
@@ -490,7 +489,9 @@ class Backend:
             "stub": self.stub,
             "request": request if isinstance(request, dict) else getattr(request, "__dict__", {}),
             "peaks": peaks,
-            "peaks_per_second": PEAK_BUCKETS_PER_SECOND,
+            # The rate the envelope actually ended up at, which is below the asked
+            # for one on a long track: the browser needs it to place the bars.
+            "peaks_per_second": peak_rate,
         }
         (output_dir / "result.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
         return {"files": [{"name": Path(written).name, "path": Path(written).name,
@@ -499,7 +500,7 @@ class Backend:
                           "duration": round(seconds, 2), "url": _audio_url(output_dir, written)}],
                 "audio_seconds": round(seconds, 2), "sample_rate": sample_rate,
                 "channels": int(array.shape[1]), "elapsed": meta["elapsed"],
-                "peaks": peaks, "peaks_per_second": PEAK_BUCKETS_PER_SECOND,
+                "peaks": peaks, "peaks_per_second": peak_rate,
                 "stub": self.stub}
 
 
@@ -660,44 +661,101 @@ def compute_peaks(array: Any, sample_rate: int, buckets_per_second: int = PEAK_B
 def peaks_with_rate(array: Any, sample_rate: int,
                     buckets_per_second: int = PEAK_BUCKETS_PER_SECOND,
                     limit: int = 6000) -> tuple[list[float], float]:
-    """Peak envelope plus the bucket rate it actually ended up at.
+    """Peak envelope plus the bucket rate it actually ended up on.
 
     ``limit`` can force a coarser envelope than asked for on a long slice; the
     caller has to know the rate it got, otherwise the browser places the peaks on
-    the wrong grid and the waveform shows holes.
+    the wrong grid and the waveform shows holes where audio plays. The returned
+    rate is the grid the list belongs to, so ``len(peaks) / rate`` is the length of
+    the audio, which is what the browser checks before trusting the list.
     """
     import numpy as np
 
     data = np.asarray(array, dtype=np.float32)
     if data.ndim == 1:
         data = data[:, None]
-    mono = data.mean(axis=1)
+    mono = np.abs(data.mean(axis=1))
     total = mono.shape[0]
     if total == 0:
         return [], float(buckets_per_second)
-    buckets = max(1, int(total / sample_rate * buckets_per_second))
-    if buckets > limit:
-        buckets = limit
-    window = max(1, total // buckets)
-    trimmed = mono[: window * buckets]
-    if trimmed.shape[0] < window * buckets:
-        pad = np.zeros(window * buckets - trimmed.shape[0], dtype=np.float32)
-        trimmed = np.concatenate([trimmed, pad])
-    blocks = trimmed.reshape(buckets, window)
-    peaks = np.maximum(np.abs(blocks.max(axis=1)), np.abs(blocks.min(axis=1)))
+    seconds = total / float(sample_rate) if sample_rate else 0.0
+    grid = float(buckets_per_second)
+    if seconds * grid > limit:
+        grid = max(0.1, limit / max(seconds, 1e-6))
+    buckets = int(min(total, max(1, round(seconds * grid))))
+    window = total / buckets
+    if abs(window - round(window)) < 1e-9 and round(window) >= 1:
+        step = int(round(window))
+        blocks = mono[:(total // step) * step].reshape(total // step, step).max(axis=1)
+        peaks = blocks[:buckets] if blocks.shape[0] >= buckets else np.concatenate(
+            [blocks, np.zeros(buckets - blocks.shape[0], dtype=np.float32)])
+    else:
+        # A fractional window (a capped long track) is measured bucket by bucket.
+        starts = (np.arange(buckets, dtype=np.float64) * window).astype(np.int64)
+        padded = np.concatenate([mono, np.zeros(1, dtype=np.float32)])
+        peaks = np.maximum.reduceat(padded, starts)[:buckets]
     top = float(peaks.max()) if peaks.size else 0.0
     if top > 0:
         peaks = peaks / top
-    actual = (buckets * float(sample_rate)) / max(1, window * buckets)
-    return [round(float(p), 4) for p in peaks], round(actual, 4)
+    effective = buckets / seconds if seconds > 0 else grid
+    return ([round(min(1.0, float(p)), 4) for p in peaks],
+            round(effective if abs(effective - grid) > 0.01 else grid, 4))
+
+
+def peaks_aligned(array: Any, sample_rate: int, start: float = 0.0,
+                  buckets_per_second: int = PEAK_BUCKETS_PER_SECOND) -> list[float]:
+    """Peak envelope of one tile, laid on the grid of the whole track.
+
+    The bucket boundaries belong to the track and not to the tile, so tiles of any
+    length butt together without leaving gaps or overlapping. The values are not
+    normalised either: every tile is part of one performance, and scaling each tile
+    by its own loudest moment makes a quiet passage look as loud as the chorus.
+    """
+    import math
+
+    import numpy as np
+
+    data = np.asarray(array, dtype=np.float32)
+    if data.ndim == 1:
+        data = data[:, None]
+    mono = np.abs(data.mean(axis=1))
+    total = mono.shape[0]
+    rate = float(buckets_per_second)
+    if total == 0 or rate <= 0 or sample_rate <= 0:
+        return []
+    window = float(sample_rate) / rate          # samples in one bucket
+    first = int(math.floor((start * sample_rate) / window))
+    last = int(math.ceil(((start * sample_rate) + total) / window))
+    count = max(1, last - first)
+    # Bucket ``first + i`` starts at ``(first + i) * window`` samples of the track,
+    # which is ``shift + i * window`` samples into this tile.
+    shift = (first * window) - (start * sample_rate)
+    bounds = np.arange(count + 1, dtype=np.float64) * window + shift
+    starts = np.floor(bounds[:count]).astype(np.int64)
+    starts = np.clip(starts, 0, max(0, total - 1))
+    padded = np.concatenate([mono, np.zeros(1, dtype=np.float32)])
+    peaks = np.maximum.reduceat(padded, starts)[:count]
+    return [round(min(1.0, float(p)), 4) for p in peaks]
+
+
+def peak_grid(start: float, buckets_per_second: int = PEAK_BUCKETS_PER_SECOND) -> int:
+    """Index of the first bucket a tile starting at ``start`` seconds writes into.
+
+    The browser needs the same number, and deriving it from a rounded ``start`` can
+    land on the neighbour bucket, so the worker states it outright.
+    """
+    import math
+
+    return int(math.floor(float(start) * float(buckets_per_second)))
 
 
 def _emit_audio_chunk(piece: Any, start: float, live: Any = None) -> None:
     """Push the peak envelope of a freshly decoded tile (no PCM over the wire).
 
-    Every tile is bucketed at ``PEAK_BUCKETS_PER_SECOND``: if one tile were
-    rescaled to fit a bucket limit it would land on the wrong grid in the browser
-    and the drawn waveform would show holes where audio exists.
+    The tile is bucketed on the grid of the whole track, so tiles of any size line
+    up with each other and with the envelope the finished file carries; a tile
+    bucketed on its own would leave silent holes at the joins. The grid rate is
+    therefore always ``PEAK_BUCKETS_PER_SECOND``.
 
     When ``live`` is given the tile is also appended to the growing WAV file the
     browser plays, so the part that has already decoded can be listened to.
@@ -713,13 +771,15 @@ def _emit_audio_chunk(piece: Any, start: float, live: Any = None) -> None:
         array = array.T
     if live is not None:
         live.append(array)
+    tile_peaks = peaks_aligned(array, SAMPLE_RATE, start, PEAK_BUCKETS_PER_SECOND)
     payload = {
         "event": "audio",
-        "start": round(float(start), 3),
+        "start": round(float(start), 4),
+        "start_bucket": peak_grid(start, PEAK_BUCKETS_PER_SECOND),
         "duration": round(array.shape[0] / float(SAMPLE_RATE), 3),
         "sample_rate": SAMPLE_RATE,
-        "peaks": compute_peaks(array, SAMPLE_RATE, PEAK_BUCKETS_PER_SECOND, LIVE_PEAK_LIMIT),
-        "peaks_per_second": PEAK_BUCKETS_PER_SECOND,
+        "peaks": tile_peaks,
+        "peaks_per_second": float(PEAK_BUCKETS_PER_SECOND),
     }
     if live is not None and live.enabled:
         payload["url"] = live.url

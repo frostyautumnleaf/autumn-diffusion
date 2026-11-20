@@ -48,8 +48,18 @@ export class History {
     this.query = '';
     this.favoritesOnly = false;
     this.render();
-    this._refresh = debounce(() => this.renderBody(), 60);
-    state.on(TOPICS.jobs, this._refresh);
+    // Progress events arrive many times a second. The last job that changed is
+    // carried into the debounced repaint so that only its card is written.
+    this._pendingJob = null;
+    this._refresh = debounce(() => {
+      const job = this._pendingJob;
+      this._pendingJob = null;
+      this.renderBody(job);
+    }, 60);
+    state.on(TOPICS.jobs, (job) => {
+      if (job && job.id) this._pendingJob = job;
+      this._refresh();
+    });
     state.on(TOPICS.ui, (patch) => {
       if (!patch) return;
       if (patch.tab || patch.selectedJob !== undefined) this.renderBody();
@@ -119,7 +129,7 @@ export class History {
     });
   }
 
-  renderBody() {
+  renderBody(changed) {
     if (!this.strip) return;
     const jobs = this.jobs();
     if (this.titleEl) this.titleEl.textContent = KIND_LABEL[this.kind] || 'History';
@@ -146,6 +156,13 @@ export class History {
         this.cards.set(job.id, card);
         this.strip.appendChild(card);
       }
+      return;
+    }
+    // The set and the order are unchanged. When the event named one job and that
+    // card is still part of what the filter shows, patching that card is enough.
+    if (changed && !this.query && !this.favoritesOnly && changed.kind === this.kind
+      && this.cards && this.cards.has(changed.id)) {
+      this.updateCard(this.cards.get(changed.id), changed);
       return;
     }
     for (const job of jobs) {
@@ -179,7 +196,9 @@ export class History {
         class: 'hist-star', html: icon('star', 11), title: 'Favourite',
         onclick: async (event) => {
           event.stopPropagation();
-          const next = !job.favorite;
+          // The closure holds a snapshot, whose favourite flag goes stale after the
+          // first toggle, so the current flag is read from the store.
+          const next = !(state.jobs.get(job.id) || job).favorite;
           state.upsertJob({ id: job.id, favorite: next });
           try { await api.favoriteJob(job.id, next); } catch (err) { toast(err.message, { kind: 'err' }); }
         },
@@ -217,16 +236,24 @@ export class History {
     if (!refs) return;
     const running = job.status === 'running' || job.status === 'queued';
     const progress = job.steps ? (job.step || 0) / job.steps : (job.progress || 0);
+    const title = `${job.title || job.prompt || job.id} \u2014 ${job.status}`;
+    const heading = job.title || job.prompt || job.id;
+    const when = timeAgo(job.created_at);
+    const elapsed = job.elapsed ? secs(job.elapsed) : '';
+    const stateText = job.status === 'error' ? 'failed'
+      : (running ? `${Math.round(progress * 100)}%` : '');
+    // Each write is guarded. Assigning a value that has not changed still replaces
+    // the text node, and with a strip full of cards that is what flickered.
     card.classList.toggle('active', state.ui.selectedJob === job.id);
     card.classList.toggle('running', running);
     card.classList.toggle('failed', job.status === 'error');
-    card.title = `${job.title || job.prompt || job.id} — ${job.status}`;
-    refs.bar.style.width = `${Math.round(Math.max(0, Math.min(1, progress)) * 100)}%`;
-    refs.title.textContent = job.title || job.prompt || job.id;
-    refs.when.textContent = timeAgo(job.created_at);
-    refs.elapsed.textContent = job.elapsed ? secs(job.elapsed) : '';
-    refs.state.textContent = job.status === 'error' ? 'failed'
-      : (running ? `${Math.round(progress * 100)}%` : '');
+    if (card.title !== title) card.title = title;
+    if (running) refs.bar.style.width = `${Math.round(Math.max(0, Math.min(1, progress)) * 100)}%`;
+    if (refs.title.textContent !== heading) refs.title.textContent = heading;
+    if (refs.when.textContent !== when) refs.when.textContent = when;
+    if (refs.elapsed.textContent !== elapsed) refs.elapsed.textContent = elapsed;
+    if (refs.state.textContent !== stateText) refs.state.textContent = stateText;
+    refs.state.classList.toggle('err', job.status === 'error');
     const star = card.querySelector('.hist-star');
     star.classList.toggle('on', !!job.favorite);
     // The spinner lives inside the thumb, so it is patched rather than rebuilt.

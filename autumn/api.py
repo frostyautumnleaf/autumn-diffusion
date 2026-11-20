@@ -96,6 +96,8 @@ class Api:
             add("*", "/api/jobs/{job_id}/cancel", self.job_cancel),
             add("*", "/api/jobs/{job_id}/rerun", self.job_rerun),
             add("*", "/api/jobs/{job_id}/favorite", self.job_favorite),
+            add("*", "/api/jobs/{job_id}/peaks", self.job_peaks),
+            add("*", "/api/jobs/{job_id}/reuse", self.job_reuse),
             add("*", "/api/queue/clear", self.queue_clear),
             add("*", "/api/history/clear", self.history_clear),
             add("*", "/api/preview", self.preview),
@@ -349,6 +351,78 @@ class Api:
             return fail("job not found", status=404)
         self.broadcast("job", {"job": job.as_dict()})
         return ok({"job": job.as_dict()})
+
+    async def job_reuse(self, request: web.Request) -> web.Response:
+        """Copy one output of a finished job into the engine input folder.
+
+        ComfyUI only loads conditioning media from ``input``, so a result has to be
+        copied there before it can be an initial image, a first frame or a source
+        video. The reply is the file record the form fields expect.
+        """
+        job = self.ctx.history.get(request.match_info["job_id"])
+        if not job:
+            return fail("job not found", status=404)
+        files = job.files or []
+        try:
+            index = int(request.query.get("index") or 0)
+        except ValueError:
+            index = 0
+        body = await read_body(request)
+        if not index:
+            try:
+                index = int(body.get("index") or 0)
+            except (TypeError, ValueError):
+                index = 0
+        if not files:
+            return fail("this job has no output file")
+        record = files[min(index, len(files) - 1)]
+        try:
+            info = self.ctx.assets.import_output(
+                str(record.get("subfolder") or ""),
+                str(record.get("path") or record.get("name") or ""),
+                name=str(body.get("name") or ""))
+        except (OSError, ValueError) as exc:
+            return fail(str(exc))
+        self.ctx.invalidate_models()
+        return ok({"file": self.ctx.assets.register_attachment(info)})
+
+    async def job_peaks(self, request: web.Request) -> web.Response:
+        """Store a peak envelope the browser measured from the audio itself.
+
+        A long slice is bucketed coarser than the worker asked for, and the canvas
+        can only place its bars correctly when the rate matches the list it holds.
+        When the browser re-measures a track it posts the result here, so the next
+        session draws it without decoding the file again.
+        """
+        job_id = request.match_info["job_id"]
+        body = await read_body(request)
+        raw = body.get("peaks")
+        if not isinstance(raw, list) or len(raw) < 2:
+            return fail("peaks required")
+        peaks: list[float] = []
+        for value in raw:
+            try:
+                peaks.append(max(-1.0, min(1.0, float(value))))
+            except (TypeError, ValueError):
+                continue
+        if len(peaks) < 2:
+            return fail("peaks invalid")
+        job = self.ctx.history.get(job_id)
+        if not job:
+            return fail("job not found", status=404)
+        meta = dict(job.meta or {})
+        meta["peaks"] = peaks
+        rate = float(body.get("peaks_per_second") or 0.0)
+        if rate > 0:
+            meta["peaks_per_second"] = round(rate, 4)
+        seconds = float(body.get("audio_seconds") or 0.0)
+        if seconds > 0 and not meta.get("audio_seconds"):
+            meta["audio_seconds"] = round(seconds, 2)
+        updated = self.ctx.history.update(job_id, meta=meta)
+        if not updated:
+            return fail("job not found", status=404)
+        self.broadcast("job", {"job": updated.as_dict()})
+        return ok({"peaks": len(peaks), "peaks_per_second": meta.get("peaks_per_second")})
 
     async def queue_clear(self, request: web.Request) -> web.Response:
         return ok(await self.ctx.runner.clear_queue())
@@ -609,6 +683,12 @@ class Api:
             if action == "move":
                 return ok(assets.move(category, path, str(body.get("to_category") or category),
                                       to_subfolder=str(body.get("to_subfolder") or ""), root=root))
+            if action == "copy":
+                return ok(assets.copy(category, path, str(body.get("to_category") or category),
+                                      to_root=str(body.get("to_root") or ""),
+                                      to_subfolder=str(body.get("to_subfolder") or ""), root=root,
+                                      name=str(body.get("name") or ""),
+                                      overwrite=bool(body.get("overwrite"))))
             if action == "stat":
                 return ok({"stat": assets.stat(category, path, root=root)})
             if action == "text":

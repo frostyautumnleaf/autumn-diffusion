@@ -8,7 +8,7 @@
 import { state, TOPICS } from './state.js';
 import { api } from './api.js';
 import { icon } from './icons.js';
-import { toast, menu, modal, lightbox, promptDialog } from './components.js';
+import { toast, menu, modal, lightbox, promptDialog, attachContextMenu } from './components.js';
 import { el, clear, debounce, fileName, baseName, mediaKind, mediaUrl, copyText } from './util.js';
 
 const mounted = new Map();
@@ -172,7 +172,82 @@ export class Composer {
     this.root.appendChild(this.renderFoot());
 
     this.wireDrop(this.box);
+    attachContextMenu(this.box, () => this.contextItems());
     this.updateMeta();
+  }
+
+  /** Right-click items for the composer box. */
+  contextItems() {
+    const text = this.promptBox ? String(this.promptBox.value || '') : '';
+    const items = [
+      { label: 'Attach a file from disk', icon: 'upload', run: () => this.pickFiles() },
+    ];
+    if (this.kind === 'music') {
+      items.push({ label: 'Insert a section marker', icon: 'wave',
+        run: () => this.insert('[Chorus]') });
+    } else {
+      items.push({ label: 'Insert a wildcard', icon: 'shuffle', run: () => this.pickWildcard() });
+    }
+    items.push({ label: 'Randomise the seed', icon: 'dice', run: () => this.randomSeed() });
+    if (this.hasNegative) {
+      items.push({ label: 'Swap prompt and negative', icon: 'branch',
+        disabled: !text.trim() && !String((this.negativeBox && this.negativeBox.value) || '').trim(),
+        run: () => this.swapNegative() });
+    }
+    items.push({ sep: true });
+    items.push({ label: `Copy the ${this.label.toLowerCase()}`, icon: 'copy', disabled: !text.trim(),
+      run: () => copyText(text)
+        .then(() => toast(`${this.label} copied`, { kind: 'ok', timeout: 1200 }))
+        .catch(() => toast('Could not copy', { kind: 'err' })) });
+    items.push({ label: 'Clear the text', icon: 'x', disabled: !text.trim(), run: () => {
+      this.promptBox.value = '';
+      state.setFormValue(this.kind, this.field, '');
+      this.updateMeta();
+      this.promptBox.focus();
+    } });
+    items.push({ label: `Open the large ${this.label.toLowerCase()} editor`, icon: 'expand',
+      run: () => this.openBigEditor() });
+    items.push({ sep: true });
+    items.push({ label: 'Load a preset', icon: 'save',
+      run: () => this.openPresets(this.presetTool) });
+    items.push({ label: 'Reset the form to defaults', icon: 'refresh', run: () => {
+      state.resetForm(this.kind);
+      toast('Form reset to the default settings', { kind: 'ok', timeout: 1800 });
+    } });
+    return items;
+  }
+
+  /** Write a fresh seed into the form, as the dice button does. */
+  randomSeed() {
+    const seed = Math.floor(Math.random() * 4294967295);
+    state.setForm(this.kind, { seed, random_seed: true });
+    toast(`Seed ${seed}`, { kind: 'info', timeout: 1400 });
+  }
+
+  /** Exchange the prompt and the negative prompt. */
+  swapNegative() {
+    if (!this.negativeBox) return;
+    const prompt = this.promptBox.value;
+    const negative = this.negativeBox.value;
+    this.promptBox.value = negative;
+    this.negativeBox.value = prompt;
+    state.setForm(this.kind, { [this.field]: negative, negative: prompt });
+    this.updateMeta();
+    toast('Prompt and negative prompt swapped', { kind: 'ok', timeout: 1600 });
+  }
+
+  /** Open the browser file picker and attach whatever comes back. */
+  pickFiles() {
+    const input = el('input', {
+      type: 'file', multiple: true, style: { display: 'none' },
+      accept: this.kind === 'music' ? 'audio/*' : 'image/*,video/*,audio/*',
+    });
+    input.addEventListener('change', async () => {
+      await this.attachFiles(Array.from(input.files || []));
+      input.remove();
+    });
+    document.body.appendChild(input);
+    input.click();
   }
 
   renderFoot() {
@@ -200,7 +275,8 @@ export class Composer {
     }
     tools.push(tool('expand', `Open the large ${this.label.toLowerCase()} editor`,
       () => this.openBigEditor()));
-    tools.push(tool('branch', 'Presets', (event) => this.openPresets(event.currentTarget)));
+    this.presetTool = tool('branch', 'Presets', (event) => this.openPresets(event.currentTarget));
+    tools.push(this.presetTool);
     tools.push(tool('copy', `Copy the ${this.label.toLowerCase()}`, () => {
       copyText(this.promptBox.value).then(() => toast(`${this.label} copied`,
         { kind: 'ok', timeout: 1200 }));
@@ -325,27 +401,31 @@ export class Composer {
       if (!hasFiles(event)) return;
       event.preventDefault();
       this.box.classList.remove('drag');
-      const files = Array.from(event.dataTransfer.files);
-      for (const file of files) {
-        try {
-          const data = await api.upload(file, { category: 'input' });
-          const attachment = {
-            name: data.file.name,
-            kind: data.file.kind || mediaKind(file.name),
-            url: data.file.url || '',
-            size: file.size,
-          };
-          const items = (this.form.attachments || []).slice();
-          items.push(attachment);
-          this.setAttachments(items);
-          await this.refreshMedia();
-          this.autoWire(attachment);
-          toast(`Attached ${file.name}`, { kind: 'ok', timeout: 2200 });
-        } catch (err) {
-          toast(`${file.name}: ${err.message}`, { kind: 'err', timeout: 6000 });
-        }
-      }
+      await this.attachFiles(Array.from(event.dataTransfer.files));
     });
+  }
+
+  /** Upload dropped or picked files and attach each one to this tab. */
+  async attachFiles(files) {
+    for (const file of files) {
+      try {
+        const data = await api.upload(file, { category: 'input' });
+        const attachment = {
+          name: data.file.name,
+          kind: data.file.kind || mediaKind(file.name),
+          url: data.file.url || '',
+          size: file.size,
+        };
+        const items = (this.form.attachments || []).slice();
+        items.push(attachment);
+        this.setAttachments(items);
+        await this.refreshMedia();
+        this.autoWire(attachment);
+        toast(`Attached ${file.name}`, { kind: 'ok', timeout: 2200 });
+      } catch (err) {
+        toast(`${file.name}: ${err.message}`, { kind: 'err', timeout: 6000 });
+      }
+    }
   }
 
   /** Put a freshly dropped file into the field the current tab cares about. */
@@ -428,7 +508,7 @@ export class Composer {
   }
 
   // Presets ----------------------------------------------------------------
-  async openPresets(anchor) {
+  async openPresets(anchor, at = null) {
     let presets = state.presets || [];
     try {
       const data = await api.presets(this.kind);
@@ -455,7 +535,7 @@ export class Composer {
       },
     });
     if (!items.length) items.push({ label: 'No presets for this tab yet', disabled: true });
-    menu(anchor, items);
+    menu(anchor, items, at ? { at } : {});
   }
 
   async savePreset() {

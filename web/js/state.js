@@ -404,7 +404,11 @@ export const state = {
       || (payload.peaks && payload.peaks.length
         ? payload.peaks.length / Math.max(0.0001, payload.duration || 1) : rate);
     const scale = tileRate > 0 ? tileRate / rate : 1;
-    const start = Math.floor((payload.start || 0) * rate);
+    // The worker states which bucket a tile starts at. Deriving it from the rounded
+    // start time can put a tile one bucket off, which reads as a gap at the join.
+    const bucket = Number(payload.start_bucket);
+    const start = Number.isFinite(bucket) && bucket >= 0
+      ? Math.floor(bucket) : Math.floor((payload.start || 0) * rate);
     if (start > peaks.length) peaks.fill(0, peaks.length, start);
     for (let i = 0; i < payload.peaks.length; i += 1) {
       const source = Math.min(payload.peaks.length - 1, Math.floor(i / scale));

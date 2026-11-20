@@ -67,6 +67,7 @@ export const api = {
   job: (id) => call(`/api/jobs/${encodeURIComponent(id)}`),
   cancelJob: (id) => post(`/api/jobs/${encodeURIComponent(id)}/cancel`, {}),
   rerunJob: (id) => post(`/api/jobs/${encodeURIComponent(id)}/rerun`, {}),
+  reuseJob: (id, index = 0) => post(`/api/jobs/${encodeURIComponent(id)}/reuse`, { index }),
   favoriteJob: (id, favorite) => post(`/api/jobs/${encodeURIComponent(id)}/favorite`, { favorite }),
   deleteJob: (id) => call(`/api/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   clearQueue: () => post('/api/queue/clear', {}),

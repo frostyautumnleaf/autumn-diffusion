@@ -11,12 +11,15 @@
 
 import { state, TOPICS } from './state.js';
 import { icon } from './icons.js';
+import { attachContextMenu } from './components.js';
 import { el, clamp } from './util.js';
 
 /** Media the app muted itself: leave it alone forever. */
 const ownMute = new WeakSet();
 /** Media this module muted because the app is muted, so it can be unmuted again. */
 const appMute = new WeakSet();
+/** Tracks playing in the background are turned down; this is their factor. */
+const duckFactor = new WeakMap();
 
 let installed = false;
 let control = null;
@@ -38,7 +41,8 @@ export function applyVolume(media, options = {}) {
     }
   }
   const muted = !!state.ui.muted;
-  const level = clamp(Number(state.ui.volume), 0, 1);
+  const level = clamp(Number(state.ui.volume), 0, 1)
+    * clamp(duckFactor.has(media) ? duckFactor.get(media) : 1, 0, 1);
   if (media.volume !== level) media.volume = level;
   if (muted) {
     if (!media.muted) media.muted = true;
@@ -57,6 +61,21 @@ export function adoptVolume(media) {
     ownMute.delete(media);
   }
   return applyVolume(media, { force: true });
+}
+
+/**
+ * Turn one media element down or back up, relative to the app volume.
+ *
+ * The music player keeps several tracks open at once, so a track that is playing
+ * while another one is on screen is ducked instead of stopped.
+ */
+export function setDuck(media, factor) {
+  if (!media || !(media instanceof HTMLMediaElement)) return media;
+  const value = clamp(Number(factor) || 1, 0, 1);
+  if (value >= 1) duckFactor.delete(media);
+  else duckFactor.set(media, value);
+  if (media.dataset.autumnAdopted) return applyVolume(media, { force: true });
+  return media;
 }
 
 /** Apply the level to every media element under `root`. */
@@ -86,6 +105,7 @@ export function mountVolumeControl() {
   control = el('div', { class: 'volume' }, [button, slider]);
   control.slider = slider;
   control.button = button;
+  attachContextMenu(control, () => volumeMenu());
   paintControl();
   state.on(TOPICS.ui, (patch) => {
     if (patch && ('volume' in patch || 'muted' in patch)) paintControl();
@@ -95,6 +115,33 @@ export function mountVolumeControl() {
 
 function pct() {
   return state.ui.muted ? 0 : clamp(Number(state.ui.volume) || 0, 0, 1);
+}
+
+/** The volume the app ships with, which is what the reset item writes back. */
+const DEFAULT_VOLUME = 0.8;
+
+/** Right-click items for the volume control. */
+function volumeMenu() {
+  const level = clamp(Number(state.ui.volume) || 0, 0, 1);
+  const items = [
+    { label: state.ui.muted ? 'Unmute' : 'Mute', icon: state.ui.muted ? 'volume_up' : 'volume_off',
+      run: () => state.setUI({ muted: !state.ui.muted }) },
+    { sep: true },
+    { group: true, label: 'Level' },
+  ];
+  for (const value of [1, 0.75, 0.5, 0.25]) {
+    items.push({
+      label: `${Math.round(value * 100)}%`,
+      icon: value >= 0.75 ? 'volume_up' : 'volume_down',
+      hint: Math.abs(level - value) < 0.005 && !state.ui.muted ? 'current' : '',
+      run: () => state.setUI({ volume: value, muted: false }),
+    });
+  }
+  items.push({ sep: true });
+  items.push({ label: `Reset to ${Math.round(DEFAULT_VOLUME * 100)}%`, icon: 'refresh',
+    disabled: Math.abs(level - DEFAULT_VOLUME) < 0.005 && !state.ui.muted,
+    run: () => state.setUI({ volume: DEFAULT_VOLUME, muted: false }) });
+  return items;
 }
 
 function paintControl() {
@@ -139,4 +186,4 @@ export function initVolume() {
   });
 }
 
-export default { applyVolume, adoptVolume, applyAllVolume, mountVolumeControl, initVolume };
+export default { applyVolume, adoptVolume, setDuck, applyAllVolume, mountVolumeControl, initVolume };

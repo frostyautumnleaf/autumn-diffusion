@@ -759,6 +759,7 @@ class JobRunner:
         await self._emit("audio", {
             "job_id": job.id,
             "start": float(event.get("start") or 0.0),
+            "start_bucket": event.get("start_bucket"),
             "duration": float(event.get("duration") or 0.0),
             "sample_rate": int(event.get("sample_rate") or 48000),
             "peaks": event.get("peaks") or [],

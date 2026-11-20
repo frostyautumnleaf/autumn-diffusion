@@ -13,8 +13,17 @@ export class Sidebar {
   constructor(root) {
     this.root = root;
     this.render();
-    state.on(TOPICS.jobs, () => this.renderList());
-    state.on(TOPICS.state, () => this.render());
+    // The event carries the job that changed when it can, so a progress tick only
+    // has to write one row instead of the whole list.
+    state.on(TOPICS.jobs, (job) => this.renderList(job));
+    // A full snapshot only matters here when it brought a new session id, because
+    // the list is scoped to the session.
+    this._session = state.session;
+    state.on(TOPICS.state, () => {
+      if (state.session === this._session) return;
+      this._session = state.session;
+      this.render();
+    });
     // The selection outline has to follow clicks, and selecting is a UI change
     // rather than a job change, so this listens on its own topic.
     state.on(TOPICS.ui, (patch) => {
@@ -48,7 +57,7 @@ export class Sidebar {
     this.renderList();
   }
 
-  renderList() {
+  renderList(changed) {
     if (!this.list) return;
     const active = state.jobList({ limit: 500 }).filter(
       (job) => job.status === 'running' || job.status === 'queued');
@@ -57,8 +66,9 @@ export class Sidebar {
     const signature = `${active.map((job) => job.id).join(',')}`
       + `|${done.map((job) => job.id).join(',')}`;
     if (signature === this._signature && this.nodes) {
-      // Only progress changed: patch the rows instead of rebuilding them, so the
+      // Only job data changed: patch rows instead of rebuilding them, so the
       // thumbnails do not reload and flash on every step.
+      if (changed && this.patchOne(changed)) return;
       for (const job of [...active, ...done]) {
         const node = this.nodes.get(job.id);
         if (node) this.updateItem(node, job);
@@ -87,6 +97,24 @@ export class Sidebar {
       return;
     }
     for (const job of done) this.add(job, false);
+  }
+
+  /**
+   * Write one job onto its row, when that row is in the right group.
+   *
+   * A job that started, finished or left the session changes group, and the list
+   * has to be rebuilt for it; anything else is a progress tick that one row can
+   * carry. Returning false hands the work back to the full pass.
+   */
+  patchOne(job) {
+    const node = this.nodes.get(job.id);
+    if (!node) return false;
+    const running = job.status === 'running' || job.status === 'queued';
+    const inSession = job.session_id === state.session;
+    if (!!node._live !== running) return false;
+    if (!running && !inSession) return false;
+    this.updateItem(node, job);
+    return true;
   }
 
   add(job, live) {
@@ -144,14 +172,24 @@ export class Sidebar {
     if (!refs) return;
     const running = job.status === 'running' || job.status === 'queued';
     const progress = job.steps ? (job.step || 0) / job.steps : (job.progress || 0);
-    node.classList.toggle('active', state.ui.selectedJob === job.id);
-    node.title = `${job.title || job.prompt || job.id} — ${job.status}`;
-    refs.title.textContent = job.title || job.prompt || job.id;
-    refs.elapsed.textContent = job.elapsed ? secs(job.elapsed) : '';
-    refs.state.textContent = job.status === 'error' ? 'error' : (running ? `${Math.round(progress * 100)}%` : '');
-    refs.state.className = job.status === 'error' ? 'm-state err' : 'm-state';
-    refs.bar.style.display = running ? 'block' : 'none';
-    refs.barFill.style.width = `${Math.round(Math.max(0, Math.min(1, progress)) * 100)}%`;
+    const pct = `${Math.round(Math.max(0, Math.min(1, progress)) * 100)}%`;
+    const title = `${job.title || job.prompt || job.id} \u2014 ${job.status}`;
+    const heading = job.title || job.prompt || job.id;
+    const elapsed = job.elapsed ? secs(job.elapsed) : '';
+    const stateText = job.status === 'error' ? 'error' : (running ? `${Math.round(progress * 100)}%` : '');
+    // Every write is guarded: assigning the same value still replaces the text node,
+    // and dozens of rows per progress event is what made the list flicker.
+    if (node.title !== title) node.title = title;
+    if (refs.title.textContent !== heading) refs.title.textContent = heading;
+    if (refs.elapsed.textContent !== elapsed) refs.elapsed.textContent = elapsed;
+    if (refs.state.textContent !== stateText) refs.state.textContent = stateText;
+    const stateClass = job.status === 'error' ? 'm-state err' : 'm-state';
+    if (refs.state.className !== stateClass) refs.state.className = stateClass;
+    const barShown = running ? 'block' : 'none';
+    if (refs.bar.style.display !== barShown) refs.bar.style.display = barShown;
+    if (running && refs.barFill.style.width !== pct) refs.barFill.style.width = pct;
+    const activeOn = state.ui.selectedJob === job.id;
+    if (node.classList.contains('active') !== activeOn) node.classList.toggle('active', activeOn);
     const src = thumbOf(job);
     if (src !== refs.thumbSrc) {
       refs.thumbSrc = src;

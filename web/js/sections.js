@@ -941,9 +941,11 @@ const MUSIC_SECTIONS = [
       },
       {
         key: 'model', type: 'text', label: 'Model repo', placeholder: 'm-a-p/YuE2-3B',
+        tip: 'The Hugging Face repository the YuE weights are downloaded from. Only change it for a different YuE build.',
         help: 'Hugging Face repository id.',
       },
-      { key: 'vae', type: 'text', label: 'VAE repo', placeholder: 'm-a-p/YuE2-Vae' },
+      { key: 'vae', type: 'text', label: 'VAE repo', placeholder: 'm-a-p/YuE2-Vae',
+        tip: 'The Hugging Face repository of the YuE acoustic VAE, which turns codebook frames into waveform.' },
       {
         key: 'device', type: 'select', label: 'Device', options: [
           { value: 'auto', label: 'Auto' }, { value: 'cuda', label: 'CUDA' },
@@ -1150,6 +1152,194 @@ const FIELD_TIPS = {
   style: { text: 'Style tags for YuE. A handful of genres and instruments works better than a paragraph.' },
   cfg_scale: { text: 'How closely YuE follows the prompt. Leave it empty to use the default the weights were trained with.' },
   ode_steps: { text: 'Steps of the diffusion head in the acoustic decoder. More is smoother and slower.' },
+  lyrics: {
+    text: 'The words the model sings. YuE reads bracketed markers as section boundaries, so [Verse], [Chorus] and [Outro] shape the arrangement as much as the words do.',
+    example: '[Verse]\nline one\nline two\n[Chorus]',
+  },
+  cot: {
+    text: 'Chain of thought: YuE writes a short analysis of the request before it commits to music. Full reasons about genre, mood, singer capability and lyrics; a narrower choice answers faster and gives the model less to follow.',
+  },
+  abc: {
+    text: 'A melody in ABC notation: key, metre and pitches as plain text. YuE2 treats it as the tune the arrangement is built around, so a short motif works better than a whole song.',
+    example: 'X:1\nM:4/4\nK:C\nAGAB c2 z2 |',
+  },
+  'semantic_sampling.temperature': {
+    text: 'Randomness of the stage 1 token choice. Higher is more varied and more likely to wander off the prompt; 1.0 is what the weights were tuned at.',
+  },
+  'semantic_sampling.top_p': {
+    text: 'Nucleus sampling: the smallest set of tokens whose probabilities add up to this. Lower narrows every choice the model makes.',
+  },
+  'semantic_sampling.top_k': {
+    text: 'Hard cap on how many tokens are considered at each step of stage 1. Lower is faster and safer, higher keeps rare notes in play.',
+  },
+  'semantic_sampling.repetition_penalty': {
+    text: 'Penalty on tokens the track has already used, which is what stops a melody looping. 1 applies none.',
+  },
+  'semantic_sampling.penalty_window': {
+    text: 'How far back into the track the repetition penalty looks. A short window allows a chorus to come back; a long one suppresses it.',
+  },
+  'semantic_sampling.min_tokens': {
+    text: 'Shortest track, in semantic tokens. The model cannot stop before this, so raise it when a song ends too soon.',
+    example: '2000 tokens is about 80 s at 25 tokens per second',
+  },
+  'semantic_sampling.max_tokens': {
+    text: 'Longest track, in semantic tokens. Lower it to cap generation time; the model can still finish early at its end token.',
+    example: '9000 tokens is about 6 min',
+  },
+  'abc_sampling.temperature': {
+    text: 'Randomness of the stage 2 (acoustic) token choice. It changes timbre and articulation more than tune, and high values make the voice rougher.',
+  },
+  'abc_sampling.top_p': {
+    text: 'Nucleus sampling for stage 2. Lower tightens the rendered sound and can make it flatter.',
+  },
+  'abc_sampling.top_k': {
+    text: 'How many acoustic tokens are considered per frame. The YuE default is deliberately narrow because stage 1 has already fixed the music.',
+  },
+  'abc_sampling.repetition_penalty': {
+    text: 'Penalty on acoustic tokens already used nearby. Keep it close to 1: too much and the mix loses its steady beat.',
+  },
+  'abc_sampling.penalty_window': {
+    text: 'How many of the most recent acoustic frames the penalty looks back over.',
+  },
+  'abc_sampling.min_tokens': {
+    text: 'Shortest stretch the acoustic stage renders in one pass. It only matters for very short clips.',
+  },
+  'abc_sampling.max_tokens': {
+    text: 'Longest stretch the acoustic stage renders in one pass. Raise it for a long track, and lower it if stage 2 runs out of memory.',
+  },
+  trim_preview_seconds: {
+    text: 'Keep only the first N seconds of the finished track. Use it to audition a style quickly; 0 writes the whole song.',
+  },
+  device: {
+    text: 'Which device the YuE worker puts its weights on. Auto takes CUDA, then Metal, then CPU.',
+  },
+  // Second text encoders, outpainting and the second passes.
+  clip3: {
+    text: 'The third text encoder of a tri-encoder checkpoint. Leave it empty unless the model was trained with three.',
+  },
+  'outpaint.enabled': {
+    text: 'Paints past the edge of the canvas. The frame is padded first, so the new space is sampled rather than stretched.',
+  },
+  'outpaint.top': { text: 'Pixels of new canvas added above the image.' },
+  'outpaint.bottom': { text: 'Pixels of new canvas added below the image.' },
+  'outpaint.left': { text: 'Pixels of new canvas added to the left of the image.' },
+  'outpaint.right': { text: 'Pixels of new canvas added to the right of the image.' },
+  'outpaint.feather': {
+    text: 'Blurs the join between the original pixels and the painted ones, in pixels. Small values keep edges crisp.',
+  },
+  hires_steps: {
+    text: 'Steps of the high-resolution pass. It starts from the upscaled first pass, so it needs far fewer steps than the base run.',
+  },
+  hires_cfg: {
+    text: 'Guidance for the high-resolution pass alone, which is how the second pass is made to follow the prompt more or less closely than the first.',
+  },
+  hires_upscale_model: {
+    text: 'The model that enlarges the first pass before the second pass denoises it. Learned upscalers sharpen as they enlarge; latent scaling does not.',
+  },
+  refiner_prompt: {
+    text: 'Extra detail used only while the refiner is running, on top of the main prompt.',
+  },
+  refiner_sampler: {
+    text: 'Sampler for the refiner pass. Refining usually wants a gentler sampler than the one that made the image.',
+  },
+  refiner_scheduler: { text: 'Noise schedule for the refiner pass.' },
+  refiner_cfg: { text: 'Guidance for the refiner pass alone.' },
+  upscale_model: {
+    text: 'The model used for the final spatial upscale. It runs after sampling, so it cannot invent detail the sampler never made.',
+  },
+  image_quality: {
+    text: 'Quality of a lossy image format, 1 to 100. Above about 85 it changes the file size more than the picture.',
+  },
+  // Video models, guidance and output containers.
+  model: {
+    text: 'The video diffusion model. The family above decides the canvas multiple and the frame grid, so set that first.',
+  },
+  audio_vae: {
+    text: 'Encodes and decodes audio for models that generate it. Only text-and-audio and image-to-audio modes ask for one.',
+  },
+  guidance_type: {
+    text: 'How conditioning is applied: classifier free is the usual two-pass guidance, CFG++ is a sampler variant, and a distilled model carries its own guidance and ignores the CFG box.',
+  },
+  svd_min_cfg: {
+    text: 'Lower bound of guidance for SVD, which fades guidance as the clip plays.',
+  },
+  augmentation_level: {
+    text: 'How much noise SVD adds to the source image. More gives freer motion and less loyalty to the picture.',
+  },
+  shift_audio: {
+    text: 'Slides the generated audio against the picture, in seconds. Use it when lips or impacts land early.',
+  },
+  keep_source_audio: {
+    text: 'Keeps the soundtrack of the source video in the finished file instead of only the generated audio.',
+  },
+  'interpolate.model': {
+    text: 'The RIFE weights used to invent the in-between frames. They have to match the multiplier above.',
+  },
+  container: {
+    text: 'The wrapper the file is written in. MP4 is the safe choice, MKV with ProRes keeps every bit for an edit, GIF is a preview format.',
+  },
+  bit_depth: {
+    text: 'Bits per channel in the encoded file. 10-bit needs a codec that supports it and a player that will show it.',
+  },
+  color_space: {
+    text: 'The colour primaries written into the file so a player maps them correctly.',
+  },
+  // SeedVR2 restoration.
+  'seedvr.dit_model': {
+    text: 'The SeedVR2 diffusion transformer: the weights that do the restoring. They sit in the SEEDVR2 model folder and are several gigabytes.',
+  },
+  'seedvr.vae_model': {
+    text: 'The SeedVR2 autoencoder that turns frames into latents and back. It is separate from the image VAE of the checkpoint.',
+  },
+  'seedvr.max_resolution': {
+    text: 'Hard ceiling on the restored size, longest edge. 0 means no ceiling, which is what most clips want.',
+  },
+  'seedvr.uniform_batch_size': {
+    text: 'Feed every batch the same number of frames. Slower on short clips, steadier on memory.',
+  },
+  'seedvr.temporal_overlap': {
+    text: 'Frames shared between batches of frames. More overlap hides the joins where one batch ends and the next starts.',
+  },
+  'seedvr.prepend_frames': {
+    text: 'Extra frames fed in front of each batch so the first frame of that batch is not restored blind. Costs time.',
+  },
+  'seedvr.input_noise_scale': {
+    text: 'Noise added to the input before restoration. A little helps the model out of heavy compression; too much makes it repaint the scene.',
+  },
+  'seedvr.latent_noise_scale': {
+    text: 'Noise inside the latent during restoration. Higher invents more detail, and more of it wrongly.',
+  },
+  'seedvr.device': {
+    text: 'The card SeedVR2 restores on. It runs alongside the video model, so two cards means one each.',
+  },
+  'seedvr.offload_device': {
+    text: 'Where the weights wait between runs. Keeping them on the card is faster and costs memory.',
+  },
+  'seedvr.swap_io_components': {
+    text: 'Also park the encoder and decoder in system memory. Only worth it when the card is nearly full.',
+  },
+  'seedvr.cache_model': {
+    text: 'Leave the model loaded between jobs. The next restoration starts at once instead of paying the load time.',
+  },
+  'seedvr.attention_mode': {
+    text: 'Which attention kernel to use. Auto takes the fastest one that installed; flash attention and xFormers need their own packages.',
+  },
+  'seedvr.encode_tiled': {
+    text: 'Encode the frames in overlapping tiles. It is what makes a long or large clip fit on a small card.',
+  },
+  'seedvr.encode_tile_size': {
+    text: 'Pixel size of each encode tile. Smaller uses less memory and is slower.',
+  },
+  'seedvr.encode_tile_overlap': {
+    text: 'Overlap between encode tiles. More of it hides the seams and costs time.',
+  },
+  'seedvr.decode_tiled': {
+    text: 'Decode the restored latents in overlapping tiles, for the same reason as tiling the encode.',
+  },
+  'seedvr.decode_tile_size': { text: 'Pixel size of each decode tile. Smaller uses less memory and is slower.' },
+  'seedvr.decode_tile_overlap': {
+    text: 'Overlap between decode tiles; keeps detail continuous across the joins.',
+  },
 };
 
 /** Copy the tooltip tables onto the specs they describe. */

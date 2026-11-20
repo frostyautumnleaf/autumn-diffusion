@@ -691,6 +691,22 @@ export class Assets {
     }
   }
 
+  async copyTo(item) {
+    const target = await chooseCategory(this.categories, this.rootId, this.category);
+    if (!target) return;
+    try {
+      await api.assetAction('copy', {
+        category: this.category, path: item.path, to_category: target.category,
+        to_subfolder: target.subfolder || '', root: this.rootId });
+      toast('Copied', { kind: 'ok', timeout: 1600 });
+      this.loadList();
+      this.loadCategories();
+      refreshModelLists();
+    } catch (err) {
+      toast(`Copy failed: ${err.message}`, { kind: 'err' });
+    }
+  }
+
   async remove(item) {
     const ok2 = await confirmDialog({
       title: item.is_dir ? 'Delete folder' : 'Delete file',
@@ -788,6 +804,8 @@ export class Assets {
         run: () => (item.is_dir ? this.openFolder(item) : this.previewMedia(item)) },
       { label: 'Rename', icon: 'save', run: () => this.rename(item) },
       { label: 'Move to…', icon: 'branch', run: () => this.move(item) },
+      { label: 'Copy to…', icon: 'copy', disabled: item.is_dir,
+        run: () => this.copyTo(item) },
       { label: 'Copy path', icon: 'copy', run: async () => {
         await copyText(item.rel || item.path);
         toast('Path copied', { kind: 'ok', timeout: 1400 });

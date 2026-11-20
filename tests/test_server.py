@@ -141,6 +141,105 @@ async def test_startup_reconciles_jobs_left_running(home, settings):
         await context.close()
 
 
+async def test_measured_peaks_are_stored_on_the_job(home, settings):
+    """The browser measures an envelope it cannot trust; the answer has to persist.
+
+    Without this the next session decodes the same track again, and a track whose
+    stored envelope was bucketed on the wrong grid keeps drawing with holes.
+    """
+    store = History(home.history_db)
+    job = store.add(kind="music", title="long track", status="succeeded",
+                    meta={"peaks": [0.1] * 40, "peaks_per_second": 10.0})
+    store.close()
+
+    client, context = await open_app(settings)
+    try:
+        measured = [round(index / 100, 4) for index in range(1, 51)]
+        async with client.post(f"/api/jobs/{job.id}/peaks", json={
+            "peaks": measured,
+            "peaks_per_second": 25.0,
+            "audio_seconds": 2.0,
+        }) as response:
+            assert response.status == 200
+            body = await response.json()
+        assert body["ok"] is True
+        assert body["peaks"] == 50
+
+        async with client.get(f"/api/jobs/{job.id}") as response:
+            stored = ((await response.json()).get("job") or {}).get("meta") or {}
+        assert stored["peaks_per_second"] == 25.0
+        assert stored["peaks"] == measured
+        assert stored["audio_seconds"] == 2.0
+
+        async with client.post("/api/jobs/none/peaks", json={"peaks": [1, 2]}) as missing:
+            assert missing.status == 404
+        async with client.post(f"/api/jobs/{job.id}/peaks", json={"peaks": []}) as empty:
+            assert empty.status != 200
+    finally:
+        await client.close()
+        await context.close()
+
+
+async def test_a_finished_result_can_be_copied_back_into_the_input_folder(home, settings, png_bytes):
+    """ComfyUI loads conditioning media from `input`, so a result must be copied.
+
+    Without the copy the "use this result again" menu items would write a path the
+    engine cannot open, and image-to-image or video-to-video follow-ups would fail
+    at submission time rather than here.
+    """
+    output = home.comfy_output / "autumn" / "image"
+    output.mkdir(parents=True, exist_ok=True)
+    (output / "result.png").write_bytes(png_bytes)
+    store = History(home.history_db)
+    job = store.add(kind="image", title="a result", status="succeeded")
+    store.update(job.id, files=[{"name": "result.png", "path": "result.png",
+                                 "subfolder": "autumn/image", "type": "output", "kind": "image"}])
+    store.close()
+
+    client, context = await open_app(settings)
+    try:
+        async with client.post(f"/api/jobs/{job.id}/reuse", json={}) as response:
+            assert response.status == 200
+            body = await response.json()
+        assert body["file"]["name"] == "result.png"
+        assert body["file"]["type"] == "input"
+        assert body["file"]["kind"] == "image"
+        assert (home.comfy_input / "result.png").read_bytes() == png_bytes
+        assert (output / "result.png").exists(), "the original output must stay put"
+
+        async with client.post(f"/api/jobs/{job.id}/reuse", json={}) as again:
+            second = (await again.json())["file"]["name"]
+        assert second == "result-2.png"
+
+        async with client.post("/api/jobs/none/reuse", json={}) as missing:
+            assert missing.status == 404
+    finally:
+        await client.close()
+        await context.close()
+
+
+async def test_asset_copy_reaches_the_api(home, settings):
+    models = home.comfy_models
+    (models / "loras").mkdir(parents=True, exist_ok=True)
+    (models / "loras" / "style.safetensors").write_bytes(b"\x00" * 16)
+
+    client, context = await open_app(settings)
+    try:
+        async with client.post("/api/assets/copy", json={
+            "category": "loras", "path": "style.safetensors", "to_category": "loras",
+            "to_subfolder": "", "name": "style-copy.safetensors",
+        }) as response:
+            assert response.status == 200
+            body = await response.json()
+        assert body["ok"] is True
+        assert body["path"] == "style-copy.safetensors"
+        assert (models / "loras" / "style-copy.safetensors").stat().st_size == 16
+        assert (models / "loras" / "style.safetensors").exists()
+    finally:
+        await client.close()
+        await context.close()
+
+
 async def test_image_job_end_to_end(home, settings):
     client, context = await open_app(settings)
     try:
