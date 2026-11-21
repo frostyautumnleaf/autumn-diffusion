@@ -17,28 +17,50 @@ Two backends live behind the same interface:
     the dashboard, its tests and its screenshots work on a machine with no GPU
     and no weights downloaded.
 
-Events: ``ready``, ``stage``, ``progress``, ``audio``, ``log``, ``done``,
-``error``, ``status``. ``audio`` carries a decoded slice of the waveform so the
-UI can draw a live waveform while the VAE is still working.
+Events: ``ready``, ``stage``, ``progress``, ``audio``, ``score``, ``log``,
+``done``, ``error``, ``status``. ``audio`` carries a decoded slice of the waveform
+so the UI can draw a live waveform while the VAE is still working. ``score``
+carries the ABC the planner produced, so the UI can show and edit it.
+
+A job runs one of four modes: ``song`` (all four stages), ``compose`` (stop after
+the planner, so the score can be reviewed), ``render`` (pick up a saved plan) and
+``redecode`` (decode latents that are already on disk, optionally with another
+decoder). The stages hand over through files, listed in :data:`PLAN_FILES`.
 """
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import math
 import os
 import queue
+import random
+import re
+import shutil
 import sys
 import threading
 import time
 import traceback
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
+
+from . import abc
+from .config import MUSIC_COT_LEVELS, MUSIC_MODES
 
 PROTOCOL = 1
 SAMPLE_RATE = 48000                       # YuE2's VAE decodes to 48 kHz stereo
 PEAK_BUCKETS_PER_SECOND = 25
 SEMANTIC_TOKENS_PER_SECOND = 25           # one semantic token is one latent frame
+
+#: What a music job is asked to do. YuE can plan without rendering, render from a
+#: plan it already made, and decode latents it already has, so those are jobs too.
+MODES = MUSIC_MODES
+#: Chain-of-thought levels ``SongRequest`` accepts - there are exactly these three.
+COT_LEVELS = MUSIC_COT_LEVELS
+#: Files a plan is made of, so a job can be re-rendered from its own output folder.
+PLAN_FILES = ("plan.json", "plan_manifest.json", "abc_tokens.npy", "prefix.npy", "score.abc")
 
 _EMIT_LOCK = threading.Lock()
 
@@ -79,7 +101,258 @@ def error_payload(exc: BaseException) -> dict[str, Any]:
     return payload
 
 
+def mode_of(params: dict[str, Any]) -> str:
+    """The job mode, defaulted and checked: song, compose, render or redecode."""
+    value = str(params.get("mode") or "song").strip().lower()
+    if value in ("full", "generate", ""):
+        value = "song"
+    if value not in MODES:
+        raise ValueError(f"Unknown music mode {value!r}: use {', '.join(MODES)}")
+    return value
+
+
+def cot_level(value: Any) -> str:
+    """``off`` / ``melody`` / ``full``, which is all YuE understands."""
+    text = str(value or "full").strip().lower()
+    return text if text in COT_LEVELS else "full"
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def _program_root() -> Path:
+    """The program folder the running layout points at.
+
+    Read through ``LAYOUT`` rather than the module constant, so a relocated install
+    - and a test home - gets its own boundary instead of the checkout.
+    """
+    from autumn.paths import LAYOUT, PROGRAM_DIR
+
+    return Path(getattr(LAYOUT, "root", PROGRAM_DIR) or PROGRAM_DIR)
+
+
+def _inside(path_text: str) -> Path | None:
+    """Resolve a user-supplied path, refusing anything outside the program folder."""
+    text = str(path_text or "").strip()
+    if not text:
+        return None
+    root = _program_root()
+    candidate = Path(text)
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    try:
+        resolved = candidate.resolve()
+        resolved.relative_to(root.resolve())
+    except (ValueError, OSError):
+        raise ValueError(f"{text} is outside the program folder") from None
+    return resolved
+
+
 # --------------------------------------------------------------------- stub
+#
+# The stub is what runs on a machine with no GPU and no weights: it produces the
+# same events, the same files and a real ABC score in the dialect YuE reads, so
+# the composition workflow can be exercised end to end without a model.
+
+LETTERS = "CDEFGAB"
+LETTER_SEMITONE = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
+ACCIDENTAL_PREFIX = {0: "", 1: "^", 2: "^^", -1: "_", -2: "__"}
+# (semitones above the tonic, steps along the letter wheel) for the two pentatonics.
+MAJOR_PENTATONIC = ((0, 0), (2, 1), (4, 2), (7, 4), (9, 5))
+MINOR_PENTATONIC = ((0, 0), (3, 2), (5, 3), (7, 4), (10, 6))
+STUB_TEMPOS = (76, 84, 88, 92, 96, 104, 112, 120)
+STUB_KEYS = ("C", "A", "G", "F", "Am", "Em", "Dm", "Bm")
+STUB_PROGRESSIONS = {
+    "C": ("C", "G", "Am", "F"), "A": ("A", "E", "F#m", "D"), "G": ("G", "D", "Em", "C"),
+    "F": ("F", "C", "Dm", "Bb"), "Am": ("Am", "F", "C", "G"), "Em": ("Em", "C", "G", "D"),
+    "Dm": ("Dm", "Bb", "F", "C"), "Bm": ("Bm", "G", "D", "A"),
+}
+#: Rhythms in sixteenth notes; every pattern fills one 4/4 bar exactly.
+STUB_RHYTHMS = ((4, 4, 4, 4), (2, 2, 4, 4, 4), (4, 2, 2, 4, 4), (8, 4, 4),
+                (4, 4, 2, 2, 4), (2, 2, 2, 2, 4, 4), (4, 4, 8))
+
+
+def _tonic(key: str) -> tuple[int, int, bool]:
+    """Pitch class, letter index and mode of a ``K:`` name such as ``F#m``."""
+    letter = key[0]
+    rest = key[1:]
+    accidentals = 0
+    while rest and rest[0] in "#b":
+        accidentals += 1 if rest[0] == "#" else -1
+        rest = rest[1:]
+    minor = bool(rest) and rest[0] == "m"
+    return (LETTER_SEMITONE[letter] + accidentals) % 12, LETTERS.index(letter), minor
+
+
+def _spell(midi: int, key: str, degree: int, octave: int) -> str:
+    """Write one note of the key's pentatonic as ABC, spelled for that key.
+
+    The degree and octave come out of the same walk that produced ``midi``, so the
+    letter is already the right one and only the accidental has to be worked out.
+    The octave mark follows ``midi``, which keeps the spelling true when a note is
+    moved an octave down to stay inside a singing range.
+    """
+    tonic_class, tonic_letter, minor = _tonic(key)
+    scale = MINOR_PENTATONIC if minor else MAJOR_PENTATONIC
+    semitones, steps = scale[degree % len(scale)]
+    letter = LETTERS[(tonic_letter + steps) % 7]
+    target = (tonic_class + semitones) % 12
+    difference = (target - LETTER_SEMITONE[letter] + 18) % 12 - 6
+    accidental = ACCIDENTAL_PREFIX.get(difference, "")
+    # YuE writes the octave that holds middle C in capitals, so ``C`` is C4 and
+    # ``c`` is C5; the marks follow the pitch, which keeps the spelling true when
+    # a note is moved down an octave to stay inside a singing range.
+    midi = max(48, min(95, int(midi)))
+    octave = (midi - 60) // 12
+    if octave >= 1:
+        marks = "'" * (octave - 1)
+        return f"{accidental}{letter.lower()}{marks}"
+    if octave <= -1:
+        return f"{accidental}{letter}{',' * -octave}"
+    return f"{accidental}{letter}"
+
+
+def _tonic_midi(key: str) -> int:
+    """The key's tonic, placed where a melody sits comfortably.
+
+    YuE writes middle C as ``C``, so the tonic starts in that octave and minor keys
+    sit a third lower, the way the model's own scores do.
+    """
+    tonic_class, _letter, minor = _tonic(key)
+    return 57 + ((tonic_class - 9) % 12) if minor else 60 + (tonic_class % 12)
+
+
+def _stub_sections(lyrics: str) -> list[str]:
+    """Section names taken from the lyric tags, so the score matches the words."""
+    found = [match.strip().lower() for match in re.findall(r"\[([^\]]+)\]", lyrics or "")]
+    found = [name for name in found if name and not name.startswith(("(", "/"))]
+    if not found:
+        return ["verse", "chorus"]
+    names: list[str] = []
+    for name in found:
+        if not names or names[-1] != name:
+            names.append(name)
+    return names[:6]
+
+
+def stub_score(request: Any, *, key: str = "", bpm: int = 0) -> str:
+    """A deterministic ABC score in the YuE dialect, for the stub backend.
+
+    ``full`` writes chord symbols, ``melody`` writes the tune alone, and the two
+    voices are the native ``Vocal`` and ``Ins`` parts. The same request always
+    gives the same score, which is what makes the comparison helpers testable.
+    """
+    fields = request if isinstance(request, dict) else getattr(request, "__dict__", {})
+    style = str(fields.get("style") or "")
+    lyrics = str(fields.get("lyrics") or "")
+    seed = int(fields.get("seed") or 0)
+    cot = cot_level(fields.get("cot"))
+    digest = hashlib.sha256(f"{style}|{lyrics}|{seed}".encode("utf-8")).hexdigest()
+    rng = random.Random(int(digest[:12], 16))
+    name = key or STUB_KEYS[int(digest[12:16], 16) % len(STUB_KEYS)]
+    tempo = int(bpm or STUB_TEMPOS[int(digest[16:20], 16) % len(STUB_TEMPOS)])
+    tonic_class, tonic_letter, minor = _tonic(name)
+    scale = MINOR_PENTATONIC if minor else MAJOR_PENTATONIC
+    base_midi = _tonic_midi(name)
+    chords = STUB_PROGRESSIONS.get(name, STUB_PROGRESSIONS["C"])
+    sections = _stub_sections(lyrics)
+
+    lines = ["X:1", "T:", "M:4/4", "L:1/16", f"Q:1/4={tempo}",
+             'V: Vocal clef=treble name="Vocal Melody" snm="Vocal"',
+             'V: Ins clef=treble name="Ins Melody" snm="Inst."',
+             f"K:{name}"]
+    degree = rng.randrange(len(scale))
+    for index, section in enumerate(sections):
+        bars: list[str] = []
+        for bar in range(4):
+            rhythm = STUB_RHYTHMS[(int(digest[20:24], 16) + bar + index) % len(STUB_RHYTHMS)]
+            events: list[str] = []
+            if cot == "full":
+                events.append(f'"{chords[(bar + index) % len(chords)]}"')
+            for unit in rhythm:
+                step = rng.choice((-2, -1, -1, 1, 1, 2, 0))
+                degree = max(0, min(len(scale) * 2 - 1, degree + step))
+                semitones, _steps = scale[degree % len(scale)]
+                midi = base_midi + semitones + 12 * (degree // len(scale))
+                if midi > 81:                          # keep the tune singable
+                    midi -= 12
+                elif midi < 55:
+                    midi += 12
+                if rng.random() < 0.08:               # a breath now and then
+                    events.append(f"z{unit}")
+                    continue
+                events.append(_spell(midi, name, degree % len(scale), 0))
+                if unit > 1:
+                    events[-1] += str(unit)
+            bars.append("".join(events))
+        lines.append(f"% {section}")
+        lines.append("V: Vocal")
+        lines.append("|".join(bars) + "|")
+        lines.append("V: Ins")
+        lines.append(f"Z{len(bars)}|")            # one vamp bar covers the section
+    return "\n".join(lines) + "\n"
+
+
+@dataclass
+class StubPlan:
+    """Stand-in for ``yue2.pipeline.SymbolicPlan``, writing the same files.
+
+    A plan is the handover point between the stages: ``compose`` stops after it,
+    ``render`` picks it up again, so the stub has to save and load it for real
+    rather than pass a dict around.
+    """
+
+    request: dict[str, Any]
+    abc: str | None
+    abc_ids: list[int]
+    prefix: list[int]
+    timing: dict[str, Any] = field(default_factory=dict)
+    truncated: bool = False
+
+    def save(self, directory: Path) -> None:
+        import numpy as np
+
+        directory = Path(directory)
+        directory.mkdir(parents=True, exist_ok=True)
+        payload = {"engine": "stub", "request": self.request, "timing": self.timing,
+                   "truncated": self.truncated, "prefix": self.prefix,
+                   "abc_ids": self.abc_ids, "abc": self.abc}
+        (directory / "plan.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        np.save(directory / "abc_tokens.npy", np.asarray(self.abc_ids, dtype=np.int32))
+        np.save(directory / "prefix.npy", np.asarray(self.prefix, dtype=np.int32))
+        names = ["plan.json", "abc_tokens.npy", "prefix.npy"]
+        if self.abc is not None:
+            (directory / "score.abc").write_text(self.abc, encoding="utf-8")
+            names.append("score.abc")
+        (directory / "plan_manifest.json").write_text(json.dumps(
+            {name: _sha256(directory / name) for name in names}, indent=2), encoding="utf-8")
+
+    @classmethod
+    def load(cls, directory: Path) -> "StubPlan":
+        import numpy as np
+
+        directory = Path(directory)
+        manifest = directory / "plan_manifest.json"
+        if not manifest.is_file():
+            raise ValueError("This job has no saved plan to render")
+        hashes = json.loads(manifest.read_text(encoding="utf-8"))
+        for name, digest in hashes.items():
+            target = directory / name
+            if not target.is_file() or _sha256(target) != digest:
+                raise ValueError(f"Saved plan changed ({name}); render the edited ABC as a new song")
+        data = json.loads((directory / "plan.json").read_text(encoding="utf-8"))
+        for field_name, filename in (("abc_ids", "abc_tokens.npy"), ("prefix", "prefix.npy")):
+            array = np.load(directory / filename, allow_pickle=False)
+            if array.tolist() != data[field_name]:
+                raise ValueError(f"Saved plan token array mismatch ({filename})")
+        return cls(dict(data.get("request") or {}), data.get("abc"), list(data["abc_ids"]),
+                   list(data["prefix"]), dict(data.get("timing") or {}),
+                   bool(data.get("truncated")))
+
+
 class StubPipeline:
     """Deterministic stand-in for :class:`yue2.YuE2Pipeline`."""
 
@@ -89,9 +362,16 @@ class StubPipeline:
         self.seconds = float(params.get("_stub_seconds") or 12.0)
         self.stage_seconds = float(params.get("_stub_stage_seconds") or 0.35)
 
-    def plan(self, request: dict[str, Any], **_: Any) -> dict[str, Any]:
+    def plan(self, request: dict[str, Any], **_: Any) -> StubPlan:
         time.sleep(self.stage_seconds)
-        return {"prefix_tokens": 128, "abc": "; Stub score", "request": request}
+        external = str(request.get("abc") or "").strip() if isinstance(request, dict) else ""
+        score = external or stub_score(request)
+        seed = hashlib.sha256(f"{score}".encode("utf-8")).digest()
+        token_count = max(8, min(2048, len(score) // 3))
+        abc_ids = [(seed[i % 32] << 5) + i for i in range(token_count)]
+        return StubPlan(dict(request), score, abc_ids, [1] + abc_ids[:16],
+                       {"seconds": round(self.stage_seconds, 3), "output_tokens": token_count},
+                       False)
 
     def generate_semantic(self, plan: dict[str, Any], *, steps: int = 24,
                           cancelled: Callable[[], bool] | None = None,
@@ -107,17 +387,29 @@ class StubPipeline:
     def synthesize(self, semantic: list[int], *, steps: int = 16,
                    cancelled: Callable[[], bool] | None = None,
                    on_progress: Callable[[int, int], None] | None = None) -> Any:
+        """Return finite ``[T, 64]`` latents, one frame per semantic token.
+
+        The shape is the contract the real NAR has with the VAE, so the stub keeps
+        it: the latent file a job saves can then be re-decoded by the same code path.
+        """
+        import numpy as np
+
         for step in range(steps):
             if cancelled and cancelled():
                 raise InterruptedError("cancelled")
             time.sleep(self.stage_seconds / max(1, steps))
             if on_progress:
                 on_progress(step + 1, steps)
-        return [0.0] * 64
+        tokens = [int(token) % 30011 for token in list(semantic or [])[:4096]] or [0]
+        frame = np.asarray(tokens, dtype=np.float32)[:, None]
+        channel = np.arange(64, dtype=np.float32)[None, :]
+        return (np.sin(frame * 0.017 + channel * 0.9) * 0.55).astype(np.float32)
 
-    def decode(self, latents: Any, *, tiles: int = 4,
+    def decode(self, latents: Any, *, tiles: int = 4, vae: Any = None,
                on_progress: Callable[[int, int], None] | None = None) -> Any:
         import numpy as np
+
+        del vae                                            # the stub has one decoder
 
         total = int(SAMPLE_RATE * self.seconds)
         audio = np.zeros((total, 2), dtype=np.float32)
@@ -273,17 +565,39 @@ class Backend:
     def generate(self, job_id: str, params: dict[str, Any], output_dir: Path,
                  *, cancelled: Callable[[], bool],
                  progress: Callable[[str, int, int, float], None]) -> dict[str, Any]:
+        mode = mode_of(params)
         self.load(params)
         output_dir.mkdir(parents=True, exist_ok=True)
         started = time.time()
-        self._open_live(job_id, params)
-        request = self._request(params, job_id)
+        if mode == "redecode":
+            # Stages 3 and 4 only: the latents are already on disk from an earlier run.
+            self._open_live(job_id, params)
+            try:
+                files = self._redecode(job_id, params, output_dir, started, cancelled, progress)
+            finally:
+                self._close_live()
+            return files
+        request = self._request(params, job_id, require_style=mode in ("song", "compose"))
         abc_sampling = _sampling(params.get("abc_sampling"))
         semantic_sampling = _sampling(params.get("semantic_sampling"))
-        self._emit_expected(job_id, params, semantic_sampling, approximate=True)
+        if mode != "compose":
+            self._open_live(job_id, params)
+        else:
+            self._close_live()
 
         stage("plan")
-        plan = self._plan(request, abc_sampling, cancelled)
+        if mode == "render":
+            # A saved plan is reused verbatim: its tokens are not re-planned and its
+            # ABC is not re-tokenised, so the render matches the compose it came from.
+            plan = self._load_plan(str(params.get("plan_dir") or ""))
+        else:
+            plan = self._plan(request, abc_sampling, cancelled)
+        self._save_plan(plan, output_dir, required=mode != "song")
+        self._emit_score(plan, output_dir)
+        if mode == "compose":
+            return self._finish_compose(params, output_dir, request, started, plan)
+
+        self._emit_expected(job_id, params, semantic_sampling, approximate=True)
 
         stage("semantic")
         semantic = self._semantic(plan, semantic_sampling, cancelled, progress)
@@ -294,11 +608,17 @@ class Backend:
 
         stage("nar")
         latents = self._nar(semantic, cancelled, progress)
+        if bool(params.get("save_artifacts")):
+            self._save_array(output_dir / "semantic.npy", semantic)
+            self._save_array(output_dir / "latent.npy", latents)
 
         stage("vae")
         audio, sample_rate = self._decode(latents, cancelled, progress, output_dir)
 
-        files = self._write(output_dir, audio, sample_rate, request, params, started)
+        files = self._write(output_dir, audio, sample_rate, request, params, started,
+                            extra={"mode": mode,
+                                   "artifacts": _artifacts(output_dir) if bool(
+                                       params.get("save_artifacts")) else []})
         self._close_live()
         return files
 
@@ -334,26 +654,190 @@ class Backend:
               "approximate": bool(approximate),
               "tokens_per_second": SEMANTIC_TOKENS_PER_SECOND})
 
-    def _request(self, params: dict[str, Any], job_id: str) -> dict[str, Any]:
+    # ------------------------------------------------------- stage handover
+    def _save_plan(self, plan: Any, output_dir: Path, *, required: bool = False) -> None:
+        """Write the plan next to the audio, so this job can be rendered again.
+
+        A normal song tolerates a failed write - the audio is what was asked for.
+        ``compose`` is the mode whose only product is the plan, so there it raises.
+        """
+        try:
+            plan.save(output_dir)
+        except Exception as exc:  # noqa: BLE001
+            if required:
+                raise RuntimeError(f"could not save the plan: {exc}") from exc
+            log_line(f"plan not saved ({exc})")
+
+    def _load_plan(self, text: str) -> Any:
+        """Read back a plan saved by an earlier job, from this program's own folder.
+
+        The manifest hashes are checked by the loader, so an ABC that was edited on
+        disk is refused rather than silently re-tokenised: an edit is meant to go
+        through the dashboard, which replans from the text.
+        """
+        directory = _inside(text)
+        if directory is None or not directory.is_dir():
+            raise ValueError("Pick a job that has a saved plan to render "
+                             "(run a song in Compose mode first).")
+        if not (directory / "plan_manifest.json").is_file():
+            raise ValueError(f"{directory.name} holds no saved plan")
+        engine = ""
+        try:
+            engine = str(json.loads((directory / "plan.json").read_text(
+                encoding="utf-8")).get("engine") or "")
+        except (OSError, ValueError):
+            engine = ""
+        if self.stub and engine != "stub":
+            raise ValueError("That plan was made by the real YuE engine; "
+                             "it cannot be rendered by the test engine.")
+        if not self.stub and engine == "stub":
+            raise ValueError("That plan was made by the test engine; "
+                             "it holds no real tokens to render.")
+        if self.stub:
+            return StubPlan.load(directory)
+        from yue2.pipeline import SymbolicPlan  # type: ignore
+
+        return SymbolicPlan.load(directory)
+
+    def _emit_score(self, plan: Any, output_dir: Path) -> None:
+        """Publish the score a plan holds, checked by the same parser the UI uses.
+
+        With chain of thought off YuE plans nothing, so an empty score is not an
+        error - the event is simply not sent.
+        """
+        text = str(getattr(plan, "abc", "") or "")
+        if not text.strip():
+            return
+        payload: dict[str, Any] = {"event": "score", "abc": text,
+                                    "truncated": bool(getattr(plan, "truncated", False))}
+        try:
+            score = abc.parse(text)
+        except abc.AbcError as error:
+            payload.update({"valid": False, "error": str(error)})
+        else:
+            path = output_dir / "score.abc"
+            payload.update({"valid": True, "error": "", "issues": [],
+                            "summary": abc.summarise(score), "grid": abc.grid(score),
+                            "path": _relative_output(path.parent) + "/score.abc"
+                            if path.is_file() else ""})
+        emit(payload)
+
+    def _finish_compose(self, params: dict[str, Any], output_dir: Path, request: Any,
+                        started: float, plan: Any) -> dict[str, Any]:
+        """End a compose job: the plan and the score are the deliverables."""
+        score = str(getattr(plan, "abc", "") or "")
+        check = abc.validate(score) if score.strip() else {"ok": True, "error": "",
+                                                           "summary": None}
+        meta = {"mode": "compose", "elapsed": round(time.time() - started, 2),
+                "load_seconds": self.load_seconds, "stub": self.stub,
+                "request": request if isinstance(request, dict) else getattr(
+                    request, "__dict__", {}),
+                "plan_dir": _relative_output(output_dir),
+                "artifacts": _artifacts(output_dir),
+                "truncated": bool(getattr(plan, "truncated", False)),
+                "score_valid": bool(check["ok"]), "score_error": check["error"],
+                "score_summary": check["summary"], "audio_seconds": 0.0}
+        (output_dir / "result.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        return {**{key: value for key, value in meta.items() if key != "score_summary"},
+                "files": [], "score": {"abc": score, "valid": bool(check["ok"]),
+                                       "error": check["error"],
+                                       "summary": check["summary"]}}
+
+    def _redecode(self, job_id: str, params: dict[str, Any], output_dir: Path,
+                  started: float, cancelled: Callable[[], bool],
+                  progress: Callable) -> dict[str, Any]:
+        """Decode latents from disk, optionally through a different decoder.
+
+        The score and plan files that sit beside the latent are copied over, so the
+        new take keeps the same provenance and can be compared with the old one.
+        """
+        import numpy as np
+
+        source = _inside(str(params.get("latent") or ""))
+        if source is None or not source.is_file():
+            raise ValueError("Give the path of a latent.npy saved by an earlier job.")
+        latents = np.load(source, allow_pickle=False)
+        if latents.ndim == 3 and latents.shape[0] == 1:
+            frames = int(latents.shape[-1])
+        elif latents.ndim == 2 and latents.shape[1] == 64:
+            frames = int(latents.shape[0])
+        else:
+            raise ValueError(f"Expected latents [T,64], found shape {list(latents.shape)}")
+        if frames < 1:
+            raise ValueError("That latent is empty")
+        copied = self._copy_score(source.parent, output_dir)
+        request = self._request(params, job_id, require_style=False)
+        request["latent"] = _relative_output(source)
+        decoder = _decoder_target(params.get("decoder"))
+        if decoder:
+            request["decoder"] = decoder
+        if self.stub:
+            # The stub plays a fixed number of seconds, so it is told how long the
+            # latent is before it is asked for audio.
+            self.pipeline.seconds = frames / float(SEMANTIC_TOKENS_PER_SECOND)
+        self._emit_expected(job_id, params, None, approximate=False, tokens=frames)
+        stage("vae")
+        audio, sample_rate = self._decode(latents, cancelled, progress, output_dir,
+                                         decoder=decoder)
+        return self._write(output_dir, audio, sample_rate, request, params, started,
+                          extra={"mode": "redecode", "decoder": decoder,
+                                 "latent_frames": frames, "artifacts": copied})
+
+    def _copy_score(self, source: Path, output_dir: Path) -> list[str]:
+        """Copy the plan files of a re-decoded latent, checking the ABC still parses."""
+        copied: list[str] = []
+        for name in PLAN_FILES:
+            origin = source / name
+            if not origin.is_file():
+                continue
+            try:
+                shutil.copy2(origin, output_dir / name)
+                copied.append(name)
+            except OSError as exc:  # noqa: BLE001 - provenance is a nice-to-have
+                log_line(f"could not copy {name} ({exc})")
+        score = output_dir / "score.abc"
+        if score.is_file():
+            text = score.read_text(encoding="utf-8", errors="replace")
+            check = abc.validate(text)
+            emit({"event": "score", "abc": text, "valid": bool(check["ok"]),
+                  "error": check["error"], "issues": [],
+                  "summary": check["summary"],
+                  "grid": abc.grid(abc.parse(text)) if check["ok"] else None,
+                  "path": _relative_output(output_dir) + "/score.abc"})
+        return copied
+
+    def _save_array(self, path: Path, array: Any) -> None:
+        """Persist an intermediate (semantic tokens or latents) for later re-use."""
+        import numpy as np
+
+        try:
+            np.save(path, np.asarray(array))
+        except Exception as exc:  # noqa: BLE001 - never fail a song over an extra file
+            log_line(f"could not save {path.name} ({exc})")
+
+    def _request(self, params: dict[str, Any], job_id: str, *,
+                 require_style: bool = True) -> dict[str, Any]:
         style = str(params.get("style") or params.get("prompt") or "").strip()
         lyrics = str(params.get("lyrics") or "").strip()
-        cot = str(params.get("cot") or "full")
+        cot = cot_level(params.get("cot"))
+        score = str(params.get("abc") or "").strip()
+        if score and cot == "off":
+            raise ValueError("YuE reads a score only with chain of thought on: "
+                             "set it to Melody or Full, or clear the score field.")
+        if require_style and not style:
+            raise ValueError("Add a style description before generating.")
         if self.stub:
             return {"style": style or "synthetic test tone", "lyrics": lyrics or "",
-                    "cot": cot, "seed": int(params.get("seed") or 0), "id": job_id}
+                    "cot": cot, "seed": int(params.get("seed") or 0), "id": job_id,
+                    "abc": score or None}
         from yue2.protocol import SongRequest  # type: ignore
 
-        if cot == "off":
-            lyrics = lyrics or ""
-        if not style:
-            raise ValueError("Add a style description before generating.")
-        abc = params.get("abc")
         return SongRequest(
-            style=style,
+            style=style or "re-rendered plan",
             lyrics=lyrics or "[Instrumental]",
-            cot=cot if cot in ("off", "melody", "full") else "full",
+            cot=cot,
             seed=int(params.get("seed") or 831001),
-            abc=(str(abc) if abc and cot != "off" else None),
+            abc=score or None,
             cfg_scale=(float(params["cfg_scale"]) if params.get("cfg_scale") not in (None, "")
                        else None),
             id=_safe_id(job_id))
@@ -379,14 +863,21 @@ class Backend:
                                        on_progress=_forward(progress, "nar"))
 
     def _decode(self, latents: Any, cancelled: Callable[[], bool], progress: Callable,
-                output_dir: Path) -> tuple[Any, int]:
+                output_dir: Path, *, decoder: str = "") -> tuple[Any, int]:
         if self.stub:
-            audio = self.pipeline.decode(latents, on_progress=_forward(progress, "vae"))
+            audio = self.pipeline.decode(latents, vae=decoder or None,
+                                         on_progress=_forward(progress, "vae"))
             return audio, SAMPLE_RATE
-        streamed = self._decode_streaming(latents, cancelled, progress)
-        if streamed is not None:
-            return streamed, SAMPLE_RATE
-        audio = self.pipeline.decode(latents, on_progress=_forward(progress, "vae"))
+        if not decoder:
+            # Tiling reads the pipeline's own VAE in pieces, so it is skipped when the
+            # user asked for a different decoder.
+            streamed = self._decode_streaming(latents, cancelled, progress)
+            if streamed is not None:
+                return streamed, SAMPLE_RATE
+        kwargs: dict[str, Any] = {"on_progress": _forward(progress, "vae")}
+        if decoder:
+            kwargs["vae"] = decoder
+        audio = self.pipeline.decode(latents, **kwargs)
         return audio, SAMPLE_RATE
 
     def _decode_streaming(self, latents: Any, cancelled: Callable[[], bool],
@@ -452,7 +943,8 @@ class Backend:
 
     # ---------------------------------------------------------------- output
     def _write(self, output_dir: Path, audio: Any, sample_rate: int, request: Any,
-               params: dict[str, Any], started: float) -> dict[str, Any]:
+               params: dict[str, Any], started: float,
+               *, extra: dict[str, Any] | None = None) -> dict[str, Any]:
         import numpy as np
 
         array = np.asarray(audio, dtype=np.float32)
@@ -493,6 +985,7 @@ class Backend:
             # for one on a long track: the browser needs it to place the bars.
             "peaks_per_second": peak_rate,
         }
+        meta.update(extra or {})
         (output_dir / "result.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
         return {"files": [{"name": Path(written).name, "path": Path(written).name,
                           "subfolder": _relative_output(output_dir), "type": "output",
@@ -501,14 +994,45 @@ class Backend:
                 "audio_seconds": round(seconds, 2), "sample_rate": sample_rate,
                 "channels": int(array.shape[1]), "elapsed": meta["elapsed"],
                 "peaks": peaks, "peaks_per_second": peak_rate,
-                "stub": self.stub}
+                "stub": self.stub, **(extra or {})}
+
+
+def _artifacts(output_dir: Path) -> list[str]:
+    """Names of the stage files a job left behind, in the order they were produced."""
+    names = ["score.abc", "plan.json", "plan_manifest.json", "abc_tokens.npy",
+             "prefix.npy", "semantic.npy", "latent.npy"]
+    return [name for name in names if (Path(output_dir) / name).is_file()]
+
+
+def _decoder_target(value: Any) -> str:
+    """Where the audio decoder comes from for a re-decode: a folder, or a model id.
+
+    A path is required to stay inside the program folder; a bare ``org/name`` is
+    left alone, because that is how a Hugging Face decoder is named.
+    """
+    text = str(value or "").strip()
+    if not text or text.lower() == "default":
+        return ""
+    explicit_path = text.startswith((".", "/", "~", "\\"))
+    try:
+        path = _inside(text)
+    except ValueError:
+        # Outside the program folder: only a folder may be outside, never an id.
+        if explicit_path:
+            raise
+        return text
+    if path is not None and path.is_dir():
+        return str(path)
+    if explicit_path:
+        raise ValueError("The decoder folder does not exist inside the program folder")
+    return text
 
 
 def _relative_output(output_dir: Path) -> str:
-    from autumn.paths import PROGRAM_DIR
+    root = _program_root()
 
     try:
-        return str(output_dir.resolve().relative_to(PROGRAM_DIR.resolve()))
+        return str(output_dir.resolve().relative_to(root.resolve()))
     except (ValueError, OSError):
         return str(output_dir)
 
@@ -516,10 +1040,10 @@ def _relative_output(output_dir: Path) -> str:
 def _audio_url(output_dir: Path, filename: str) -> str:
     from urllib.parse import quote
 
-    from autumn.paths import PROGRAM_DIR
+    root = _program_root()
 
     try:
-        relative = (output_dir / Path(filename).name).resolve().relative_to(PROGRAM_DIR.resolve())
+        relative = (output_dir / Path(filename).name).resolve().relative_to(root.resolve())
     except (ValueError, OSError):
         relative = Path(filename).name
     return f"/file?path={quote(str(relative))}"

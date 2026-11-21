@@ -11,8 +11,8 @@
 // other.
 
 import { state } from './state.js';
-import { toast, confirmDialog } from './components.js';
-import { baseName, copyText } from './util.js';
+import { toast, confirmDialog, modal } from './components.js';
+import { baseName, copyText, el } from './util.js';
 
 // Model family table mirrors autumn/workflow/video.py.
 export const FAMILIES = [
@@ -899,6 +899,269 @@ function tokenSeconds(value) {
     : `${Math.round(seconds * 10) / 10} s`;
 }
 
+// Score editing ------------------------------------------------------------
+//
+// A melody can arrive from a transcription, from the last generation, or from the
+// keyboard. All three are checked by the same parser the worker uses, so the
+// dashboard never claims a score is fine and then fails the job on it.
+
+/**
+ * The last check, remembered here rather than in the form.
+ *
+ * It is keyed by the text it was computed for, so a keystroke makes a stale verdict
+ * disappear by itself instead of sitting there looking authoritative.
+ */
+const scoreCheck = { abc: '', kind: '', text: '' };
+
+/** Seconds as m:ss. */
+function clockTime(value) {
+  const total = Math.max(0, Math.round(Number(value) || 0));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/** One line out of a score summary: metre, tempo, key, size, range. */
+function summaryLine(summary) {
+  const vocal = ((summary || {}).voices || {}).Vocal || {};
+  return [
+    summary.meter, summary.bpm ? `${summary.bpm} bpm` : '', summary.key,
+    vocal.measures ? `${vocal.measures} bars` : '',
+    vocal.notes ? `${vocal.notes} notes` : '',
+    summary.duration_seconds ? clockTime(summary.duration_seconds) : '',
+  ].filter(Boolean).join(' · ');
+}
+
+/** The read-out next to the Composition heading and beside the ABC label. */
+function scoreBadge(ctx) {
+  const text = String(ctx.get('abc') || '').trim();
+  if (!text) return 'no melody';
+  if (scoreCheck.abc !== text) return 'not checked';
+  return scoreCheck.text || (scoreCheck.kind === 'err' ? 'invalid' : 'checked');
+}
+
+function rememberCheck(text, source, kind) {
+  scoreCheck.abc = String(source || '').trim();
+  scoreCheck.kind = kind || '';
+  scoreCheck.text = text || '';
+}
+
+/**
+ * The ABC as the box shows it, which may be a few keystrokes ahead of the form.
+ *
+ * A code field writes on a debounce, and Check is usually clicked straight after
+ * typing, so reading the form alone would judge the text that was there before.
+ */
+function abcDraft(ctx) {
+  const node = document.querySelector('#rail-scroll [data-field="abc"] textarea');
+  return node ? String(node.value) : String(ctx.get('abc') || '');
+}
+
+/**
+ * Push what is in the box into the form.
+ *
+ * The actions below refresh the panel to show their verdict, and a rebuild takes
+ * its text from the form, so anything still sitting in the debounce has to be
+ * written first or it would be lost.
+ */
+function syncDraft(ctx, text) {
+  if (String(ctx.get('abc') || '') !== text) ctx.set('abc', text);
+}
+
+/**
+ * The score an edit is measured against.
+ *
+ * A cover keeps the tune it started from, so the transcription in play is the first
+ * candidate; failing that, the plan of the last song generated in this session.
+ */
+async function baselineScore() {
+  const transcribed = state.transcription && state.transcription.abc;
+  if (transcribed && String(transcribed).trim()) return String(transcribed);
+  const { api } = await import('./api.js');
+  for (const job of state.jobList({ kind: 'music', limit: 12 })) {
+    try {
+      const data = await api.jobScore(job.id);
+      if (data && String(data.abc || '').trim()) return String(data.abc);
+    } catch (err) {
+      // A job that wrote no score is simply not a baseline.
+    }
+  }
+  return '';
+}
+
+/** Ask the parser whether the melody is well formed, and show what it holds. */
+async function checkScore(ctx) {
+  const text = abcDraft(ctx);
+  if (!text.trim()) {
+    toast('Write, paste or transcribe a melody first', { kind: 'warn' });
+    return;
+  }
+  syncDraft(ctx, text);
+  const { api } = await import('./api.js');
+  try {
+    const data = await api.abcValidate(text);
+    if (data.valid) {
+      rememberCheck(summaryLine(data.summary) || 'valid', text, 'ok');
+      ctx.refresh();
+      showScoreSummary(data.summary || {});
+    } else {
+      rememberCheck(String(data.error || 'invalid').slice(0, 90), text, 'err');
+      ctx.refresh();
+      toast(`The parser stopped: ${data.error}`, { kind: 'err', timeout: 9000 });
+    }
+  } catch (err) {
+    toast(err.message, { kind: 'err' });
+  }
+}
+
+/** What the parser saw: enough to catch a wrong key or a bar count off by one. */
+function showScoreSummary(summary) {
+  const vocal = (summary.voices || {}).Vocal || {};
+  const rows = [
+    ['Metre', summary.meter], ['Tempo', summary.bpm ? `${summary.bpm} bpm` : ''],
+    ['Key', summary.key], ['Length', summary.duration_seconds
+      ? `${clockTime(summary.duration_seconds)} (${summary.duration_quarters} quarter notes)` : ''],
+    ['Sections', (summary.sections || []).join(' → ')],
+    ['Notes', vocal.notes], ['Range', vocal.low !== undefined
+      ? `${vocal.low} – ${vocal.high}` : ''],
+    ['Chords', vocal.chords ? vocal.chords.join(' ') : ''],
+  ].filter((row) => row[1] !== undefined && row[1] !== null && String(row[1]).length);
+  modal({
+    title: 'Score checks out', icon: 'check', width: 520,
+    body: (node) => {
+      const list = el('dl', { class: 'kv' });
+      for (const [name, value] of rows) {
+        list.appendChild(el('dt', { text: String(name) }));
+        list.appendChild(el('dd', { text: String(value) }));
+      }
+      node.appendChild(list);
+      node.appendChild(el('div', {
+        class: 'tiny faint', style: { marginTop: '10px' },
+        text: 'YuE follows this tune and invents the arrangement around it. '
+          + 'Set reasoning depth to Melody so the planner does not write a new one.',
+      }));
+    },
+  });
+}
+
+/** Compare the box against the tune it came from, and list what moved. */
+async function compareScore(ctx) {
+  const after = abcDraft(ctx);
+  if (!after.trim()) { toast('There is nothing in the box yet', { kind: 'warn' }); return; }
+  syncDraft(ctx, after);
+  const { api } = await import('./api.js');
+  let before = '';
+  try {
+    before = await baselineScore();
+  } catch (err) {
+    toast(err.message, { kind: 'err' });
+    return;
+  }
+  if (!before) { toast('No earlier score to compare with yet', { kind: 'warn' }); return; }
+  try {
+    const data = await api.abcCompare(before, after);
+    const result = data.compare || {};
+    rememberCheck(result.match ? 'melody unchanged' : `${(result.differences || []).length} change(s)`,
+      after, result.match ? 'ok' : 'warn');
+    ctx.refresh();
+    showCompare(ctx, result, before);
+  } catch (err) {
+    toast(err.message, { kind: 'err' });
+  }
+}
+
+function showCompare(ctx, result, beforeText) {
+  const differences = result.differences || [];
+  const matched = !!result.match;
+  modal({
+    title: matched ? 'The melody is still the one you started with' : 'The edit moved the melody',
+    icon: matched ? 'check' : 'warning', width: 560,
+    body: (node) => {
+      const lines = el('div', { class: 'score-lines' });
+      for (const line of differences.length ? differences : ['No note and no bar line has moved.']) {
+        lines.appendChild(el('div', {
+          class: `line ${differences.length ? 'bad' : 'good'}`,
+          text: line,
+        }));
+      }
+      node.appendChild(lines);
+      if (result.harmony_changed) {
+        node.appendChild(el('div', {
+          class: 'tiny faint', style: { marginTop: '10px' },
+          text: 'The chords changed, which is the point of reharmonising a cover.',
+        }));
+      }
+    },
+    actions: [
+      { label: 'Keep the edit', kind: 'ghost', run: (close) => close(null) },
+      { label: 'Restore the earlier score', kind: 'ok', run: (close) => {
+        ctx.set('abc', String(beforeText || ''));
+        rememberCheck('', beforeText, '');
+        ctx.refresh();
+        toast('Earlier melody put back', { kind: 'ok' });
+        close(null);
+      } },
+    ],
+  });
+}
+
+/** Drop the chord symbols, and optionally silence one of the two voices. */
+async function stripScore(ctx, keepVoice) {
+  const text = abcDraft(ctx);
+  if (!text.trim()) { toast('There is nothing in the box yet', { kind: 'warn' }); return; }
+  syncDraft(ctx, text);
+  const { api } = await import('./api.js');
+  try {
+    const data = await api.abcStrip(text, keepVoice);
+    if (!data.valid) {
+      toast(`Rewriting left an invalid score: ${data.error}`, { kind: 'err', timeout: 9000 });
+      return;
+    }
+    ctx.set('abc', data.abc);
+    rememberCheck(summaryLine(data.summary) || 'stripped', data.abc, 'ok');
+    ctx.refresh();
+    toast(keepVoice === 'both' ? 'Chord symbols removed' : `Only the ${keepVoice} part is left`,
+      { kind: 'ok' });
+  } catch (err) {
+    toast(err.message, { kind: 'err' });
+  }
+}
+
+function clearScore(ctx) {
+  if (!String(ctx.get('abc') || '').trim()) return;
+  ctx.set('abc', '');
+  rememberCheck('', '', '');
+  ctx.refresh();
+  toast('Melody cleared — YuE will invent one', { kind: 'ok' });
+}
+
+/** Run SheetSage2 over an attached recording and bring back a score. */
+async function transcribeCover(ctx) {
+  const audio = String(ctx.get('transcribe_audio') || '');
+  if (!audio) {
+    toast('Pick the recording first — drag it into the prompt box if it is not listed',
+      { kind: 'warn', timeout: 7000 });
+    return;
+  }
+  const { api } = await import('./api.js');
+  toast('Transcribing…', { kind: 'info', timeout: 60000 });
+  try {
+    const data = await api.transcribe(audio, {
+      task: ctx.get('transcribe_task') || 'melody',
+      device: ctx.get('device') || 'auto',
+      dtype: ctx.get('transcribe_dtype') || 'bf16',
+      threads: Number(ctx.get('transcribe_threads') || 4),
+      max_seconds: Number(ctx.get('transcribe_max_seconds') || 0),
+      melody_only: !!ctx.get('transcribe_melody_only'),
+    });
+    const transcription = data.transcription || {};
+    rememberCheck(transcription.error ? 'transcription failed'
+      : summaryLine(transcription.summary) || 'transcribed', ctx.get('abc'), 'ok');
+    if (data.transcriber) state.transcriber = { ...(state.transcriber || {}), ...data.transcriber };
+    ctx.refresh();
+  } catch (err) {
+    toast(err.message, { kind: 'err', timeout: 9000 });
+  }
+}
+
 const MUSIC_SECTIONS = [
   {
     id: 'song', label: 'Song', icon: 'music',
@@ -918,15 +1181,131 @@ const MUSIC_SECTIONS = [
       {
         key: 'cot', type: 'select', label: 'Reasoning depth', options: [
           { value: 'full', label: 'Full (genre, mood, capability, lyrics)' },
-          { value: 'genre', label: 'Genre only' },
-          { value: 'mood', label: 'Mood only' },
-          { value: 'capability', label: 'Capability only' },
-          { value: 'lyrics', label: 'Lyrics only' },
-          { value: 'none', label: 'Off' }],
-        help: 'How much chain-of-thought the model writes before it commits to music.' },
+          { value: 'melody', label: 'Melody (keep the tune I gave)' },
+          { value: 'off', label: 'Off (fastest)' }],
+      },
+    ],
+  },
+  {
+    id: 'composition', label: 'Composition', icon: 'layers',
+    hint: (ctx) => scoreBadge(ctx),
+    fields: [
       {
-        key: 'abc', type: 'code', label: 'ABC notation (optional)', rows: 4,
-        placeholder: 'optional melody the model follows',
+        key: 'mode', type: 'select', label: 'What this run does',
+        tip: 'YuE works in stages that hand files to each other, so a run can stop after the plan, or start again from a plan or from latents it already made.',
+        options: [
+          { value: 'song', label: 'Whole song (plan, render, decode)' },
+          { value: 'compose', label: 'Plan only (writes no audio)' },
+          { value: 'render', label: 'Render an existing plan' },
+          { value: 'redecode', label: 'Re-decode saved latents' }],
+      },
+      {
+        key: 'plan_dir', type: 'text', label: 'Plan folder',
+        when: (ctx) => ctx.get('mode') === 'render',
+        placeholder: 'music/<job id>',
+        tip: 'The folder a planned run left behind, relative to the output folder. Rendering again is cheap and keeps the same melody.',
+      },
+      {
+        key: 'latent', type: 'text', label: 'Latents file',
+        when: (ctx) => ctx.get('mode') === 'redecode',
+        placeholder: 'music/<job id>/latents.pt',
+        tip: 'A saved latent file from a run that had Keep stage artifacts on. Re-decoding costs the acoustic VAE pass only.',
+      },
+      {
+        key: 'decoder', type: 'text', label: 'Decoder override',
+        when: (ctx) => ctx.get('mode') === 'redecode',
+        placeholder: 'blank = the VAE on the Engine section',
+        tip: 'A different acoustic VAE folder or Hugging Face id, so the same take can be rendered through another decoder and compared.',
+      },
+      {
+        key: 'save_artifacts', type: 'toggle', label: 'Keep stage artifacts',
+        tip: 'Writes the semantic tokens and the latents next to the audio, so a take worth keeping can be re-decoded later without running the two language stages again.',
+      },
+      {
+        key: 'abc', type: 'code', label: 'Melody in ABC notation', rows: 8,
+        placeholder: 'X:1\nT:\nM:4/4\nL:1/8\nQ:1/4=96\n'
+          + 'V: Vocal clef=treble name="Vocal Melody" snm="Vocal"\n'
+          + 'V: Ins clef=treble name="Ins Melody" snm="Inst."\n'
+          + 'K:Am\n'
+          + 'V: Vocal\n"Am"A2B2 c2B2 |"G"B2A2 G2E2 |\n'
+          + 'V: Ins\nA,2C2 E2C2 |B,2G2 E2G2 |',
+        hint: (ctx) => scoreBadge(ctx),
+      },
+      {
+        key: '_abc_actions', type: 'buttons', label: null, items: [
+          { label: 'Check', icon: 'check', kind: 'ghost', run: checkScore },
+          { label: 'Compare', icon: 'branch', kind: 'ghost', run: compareScore },
+          { label: 'Strip chords', icon: 'wand', kind: 'ghost', run: (ctx) => stripScore(ctx, 'both') },
+          { label: 'Keep vocal', icon: 'mic', kind: 'ghost', run: (ctx) => stripScore(ctx, 'Vocal') },
+          { label: 'Clear', icon: 'x', kind: 'ghost', run: clearScore },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'cover', label: 'Cover a song', icon: 'mic',
+    hint: () => (state.transcriberInstalled ? 'SheetSage2 ready' : 'not installed'),
+    fields: [
+      {
+        key: '_transcriber_note', type: 'note', title: 'From a recording to a score',
+        text: 'SheetSage2 listens to a recording and writes it down as ABC, which you can then edit and hand to YuE as the tune of a cover. '
+          + 'It is a second environment with its own weights, so it installs on request.',
+      },
+      {
+        key: 'transcribe_audio', type: 'select', label: 'Recording', emptyLabel: 'nothing chosen',
+        options: (ctx) => [...new Set([
+          ...(ctx.options.attachments || []),
+          ...(ctx.options.audio_files || []),
+        ])],
+        tip: 'Audio that is already in the program: anything dragged into the prompt box, plus the audio files in the engine input folder.',
+      },
+      {
+        key: 'transcribe_task', type: 'select', label: 'What to listen for', options: [
+          { value: 'melody', label: 'Melody only (best for covers)' },
+          { value: 'vocal', label: 'Vocal line with words' },
+          { value: 'full', label: 'Full score with harmony' }],
+        tip: 'Melody is the cover default: the tune on its own. A full score gives chords too, which YuE treats as harmony to follow.',
+      },
+      {
+        key: 'transcribe_melody_only', type: 'toggle', label: 'Reduce a full score to the melody',
+        tip: 'After a full transcription, drop the chord symbols and the accompaniment voice, so what is left is the line a cover is built on.',
+      },
+      {
+        key: 'transcribe_max_seconds', type: 'number', label: 'Listen to the first N seconds',
+        min: 0, max: 600, step: 5, hint: '0 = the whole recording',
+        tip: 'Transcription cost grows with length. Auditioning the first 30 seconds is usually enough to pick a tune.',
+      },
+      {
+        key: 'transcribe_threads', type: 'number', label: 'CPU threads', min: 1, max: 64, step: 1,
+        tip: 'Threads the transcriber may use. It runs on the CPU unless a CUDA device is free.',
+      },
+      {
+        key: 'transcribe_dtype', type: 'select', label: 'Precision', options: [
+          { value: 'bf16', label: 'bfloat16 (default)' }, { value: 'fp16', label: 'float16' },
+          { value: 'fp32', label: 'float32 (slow, safest)' }],
+        tip: 'Number format of the transcription model. bfloat16 fits most cards; float32 is for cards without half precision.',
+      },
+      {
+        key: '_transcriber_actions', type: 'buttons', label: null,
+        // Built per render, because which of the two buttons makes sense depends on
+        // whether the transcriber is installed yet.
+        items: () => [
+          ...(state.transcriberInstalled ? [] : [{
+            label: 'Install SheetSage2', icon: 'download', kind: 'ghost', run: async (ctx) => {
+              const okToGo = await confirmDialog({
+                title: 'Install SheetSage2',
+                message: 'The transcriber is cloned into the program folder, gets its own virtual '
+                  + 'environment (.venv-transcribe) and downloads the SheetSage2 weights from '
+                  + 'Hugging Face. Continue?',
+                confirmLabel: 'Install SheetSage2',
+              });
+              if (!okToGo) return;
+              await installEnhancement('transcriber', 'SheetSage2');
+              if (ctx) ctx.refresh();
+            },
+          }]),
+          { label: 'Transcribe', icon: 'wave', kind: 'ok', run: transcribeCover },
+        ],
       },
     ],
   },
@@ -1059,6 +1438,8 @@ const SECTION_TIPS = {
   engine: 'The YuE worker: which model folder, which device, and how the two stages are run.',
   semantic: 'Stage 1 of YuE: the semantic tokens that carry melody and structure. This is where most of the musical character is set.',
   abc: 'Stage 2 of YuE: the acoustic (ABC) model that turns semantic tokens into codebook frames.',
+  composition: 'The tune itself, and which stage of YuE this run actually runs. A melody written here survives re-arranging, so it is the cheapest thing to iterate on.',
+  cover: 'A cover starts from a recording: SheetSage2 writes the tune down, you edit the score, and YuE arranges it in a new style.',
 };
 
 const FIELD_TIPS = {
@@ -1157,11 +1538,11 @@ const FIELD_TIPS = {
     example: '[Verse]\nline one\nline two\n[Chorus]',
   },
   cot: {
-    text: 'Chain of thought: YuE writes a short analysis of the request before it commits to music. Full reasons about genre, mood, singer capability and lyrics; a narrower choice answers faster and gives the model less to follow.',
+    text: 'Chain of thought: YuE writes a short analysis of the request before it commits to music. Full reasons about genre, mood, singer capability and lyrics; melody keeps a tune you supplied; off answers fastest.',
   },
   abc: {
-    text: 'A melody in ABC notation: key, metre and pitches as plain text. YuE2 treats it as the tune the arrangement is built around, so a short motif works better than a whole song.',
-    example: 'X:1\nM:4/4\nK:C\nAGAB c2 z2 |',
+    text: 'A melody in ABC notation: key, metre and pitches as plain text. YuE2 treats it as the tune the arrangement is built around, so a short motif works better than a whole song. Both voices are required, named Vocal and Ins.',
+    example: 'X:1\nT:\nM:4/4\nL:1/8\nV: Vocal\nK:Am\n"Am"A2B2 c2B2 |\nV: Ins\nA,2C2 E2C2 |',
   },
   'semantic_sampling.temperature': {
     text: 'Randomness of the stage 1 token choice. Higher is more varied and more likely to wander off the prompt; 1.0 is what the weights were tuned at.',

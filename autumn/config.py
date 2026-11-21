@@ -20,6 +20,12 @@ CONFIG_VERSION = 3
 
 PORT_RE = re.compile(r"^\d{1,5}$")
 
+#: What a music job is asked to do. YuE's stages hand over through files, so a job
+#: may plan only, render a plan it already has, or decode latents it already has.
+MUSIC_MODES = ("song", "compose", "render", "redecode")
+#: Chain-of-thought levels YuE understands - there are exactly these three.
+MUSIC_COT_LEVELS = ("off", "melody", "full")
+
 
 def _default_image() -> dict[str, Any]:
     return {
@@ -197,6 +203,21 @@ def _default_music() -> dict[str, Any]:
         "cfg_scale": None,
         "abc": "",
         "instrumental": False,
+        # What a job does: a whole song, or only the plan, or a later stage again.
+        "mode": "song",
+        "plan_dir": "",
+        "latent": "",
+        "decoder": "",
+        # Keep semantic tokens and latents next to the audio, so a take can be
+        # re-decoded later without running the two language stages again.
+        "save_artifacts": False,
+        "transcribe_melody_only": True,
+        # What SheetSage2 is asked for when a recording is turned into a cover.
+        "transcribe_audio": "",
+        "transcribe_task": "melody",
+        "transcribe_max_seconds": 0,
+        "transcribe_threads": 4,
+        "transcribe_dtype": "bf16",
         "model": "m-a-p/YuE2-3B",
         "vae": "m-a-p/YuE2-Vae",
         "device": "auto",
@@ -241,6 +262,8 @@ DEFAULTS: dict[str, Any] = {
         "image_video": True,
         "music": False,
         "seedvr": False,
+        # SheetSage2 transcription, for covers that start from a recording.
+        "transcriber": False,
     },
     "comfyui": {
         "enabled": True,
@@ -383,6 +406,7 @@ class Settings:
             "image_video": bool(feat.get("image_video")),
             "music": bool(feat.get("music")),
             "seedvr": bool(feat.get("seedvr")),
+            "transcriber": bool(feat.get("transcriber")),
             "configured": bool(feat.get("configured")),
         }
 
@@ -413,6 +437,15 @@ class Settings:
             problems.append("app.port and comfyui.port must differ")
         if self.get("app.host") not in ("127.0.0.1", "0.0.0.0", "localhost", "::"):
             problems.append("app.host must be 127.0.0.1 or 0.0.0.0")
+        mode = str(self.get("music.mode", "song"))
+        if mode not in MUSIC_MODES:
+            problems.append(f"music.mode={mode} is not one of {', '.join(MUSIC_MODES)}")
+        cot = str(self.get("music.cot", "full"))
+        if cot not in MUSIC_COT_LEVELS:
+            problems.append(f"music.cot={cot} is not one of {', '.join(MUSIC_COT_LEVELS)}")
+        if str(self.get("music.abc", "")).strip() and cot == "off":
+            problems.append("music.abc holds a score but music.cot is off: "
+                            "YuE reads a score only with chain of thought on")
         return problems
 
     # ------------------------------------------------------- comfy CLI args

@@ -216,7 +216,10 @@ def test_status_describes_the_machine(installer_for, home):
     assert status["disk_free_gb"] > 0
     assert status["platform"]["python"]
     assert status["venv"]["app"] is False
-    assert status["add-ons"] == {"kjnodes": False, "taeh3": False, "seedvr2": False}
+    assert status["add-ons"] == {"kjnodes": False, "taeh3": False, "seedvr2": False,
+                                "transcriber": False}
+    assert status["transcriber"]["installed"] is False
+    assert status["transcriber"]["python"].endswith(".venv-transcribe/bin/python")
 
 
 def test_free_disk_gb_of_a_missing_path_still_answers(home):
@@ -263,3 +266,36 @@ async def test_a_missing_music_package_is_pipped_into_the_music_venv(installer_f
     assert "tiktoken" in install[-1]
     # The interpreter is the music venv, never the dashboard's or the system one.
     assert install[-1][0].endswith(".venv-music/bin/python")
+
+
+# ------------------------------------------------------- transcription add-on
+async def test_the_transcriber_lands_in_its_own_venv(installer_for, home, settings):
+    """SheetSage2 pins its own torch, so it gets ``.venv-transcribe`` and nothing else."""
+    instance, runner, log = installer_for()
+
+    result = await instance.install_transcriber()
+
+    assert result["ok"] is True
+    assert settings.get("features.transcriber") is True
+    installs = [call for call in runner.calls
+                if "-m" in call and "pip" in call and "install" in call]
+    assert installs, "expected pip installs for the transcriber"
+    from pathlib import Path as _Path
+
+    assert {_Path(call[0]).parent.parent.name for call in installs} == {".venv-transcribe"}
+    # The pinned snapshots are pulled into the program, not into ~/.cache.
+    snapshots = [call for call in runner.calls if "-c" in call]
+    assert len(snapshots) == 2
+    assert str(home.sheetsage_dir) in " ".join(snapshots[-2])
+    assert "MERT-v2-FullSong" in " ".join(snapshots[-1])
+    assert result["model"].endswith("models/SheetSage2")
+
+
+async def test_the_transcriber_is_not_installed_with_the_base_features(installer_for):
+    """It is an opt-in add-on: a music install must not pull gigabytes of weights."""
+    instance, runner, _ = installer_for()
+
+    plan = instance.build_plan({"image_video": True, "music": True})
+
+    assert not [step for step in plan.steps if "transcribe" in step.key]
+    assert not [call for call in runner.calls if "-c" in call]

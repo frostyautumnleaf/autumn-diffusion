@@ -18,6 +18,7 @@ from typing import Any, Awaitable, Callable
 
 from aiohttp import web
 
+from . import abc
 from . import wildcards
 from .assets import safe_name
 from .comfy_client import ComfyError
@@ -26,6 +27,7 @@ from .installer import resolve_distribution, seed_starter_wildcards
 from .log import RING, get
 from .paths import LAYOUT, MODEL_FOLDERS, rel
 from .system import SystemInfo
+from .transcribe import TranscribeError
 
 log = get("api")
 
@@ -98,6 +100,10 @@ class Api:
             add("*", "/api/jobs/{job_id}/favorite", self.job_favorite),
             add("*", "/api/jobs/{job_id}/peaks", self.job_peaks),
             add("*", "/api/jobs/{job_id}/reuse", self.job_reuse),
+            add("*", "/api/jobs/{job_id}/score", self.job_score),
+            add("*", "/api/abc/validate", self.abc_validate),
+            add("*", "/api/abc/compare", self.abc_compare),
+            add("*", "/api/abc/strip", self.abc_strip),
             add("*", "/api/queue/clear", self.queue_clear),
             add("*", "/api/history/clear", self.history_clear),
             add("*", "/api/preview", self.preview),
@@ -110,6 +116,7 @@ class Api:
             add("*", "/api/enhancements", self.enhancements),
             add("*", "/api/install", self.install),
             add("*", "/api/music", self.music),
+            add("*", "/api/music/transcribe", self.music_transcribe),
             add("*", "/api/assets/categories", self.asset_categories),
             add("*", "/api/assets", self.assets),
             add("*", "/api/assets/{action}", self.assets_action),
@@ -531,7 +538,9 @@ class Api:
         """SeedVR2 / KJNodes / taeh3 install switches."""
         if request.method == "GET":
             return ok({"enhancements": self.ctx.manager.enhancement_status(),
-                       "preview": self.ctx.settings.section("preview")})
+                       "preview": self.ctx.settings.section("preview"),
+                       "transcriber": self.ctx.transcriber.info() if self.ctx.transcriber
+                       else {}})
         body = await read_body(request)
         name = str(body.get("name") or "")
         installer = self.ctx.installer
@@ -553,6 +562,17 @@ class Api:
             elif name == "taeh3":
                 result = await self._track("taeh3", lambda notify: installer.install_taeh3(
                     progress=notify))
+            elif name in ("transcriber", "sheetsage", "transcribe"):
+                # SheetSage2 is a whole extra environment with pinned weights, so it
+                # is installed on demand and never as part of the base install.
+                if bool(body.get("enabled", True)):
+                    result = await self._track("transcriber",
+                                               lambda notify: installer.install_transcriber(
+                                                   progress=notify))
+                else:
+                    self.ctx.settings.set("features.transcriber", False)
+                    self.ctx.settings.save()
+                    result = {"ok": True, "disabled": True}
             elif name == "hq_preview":
                 enable = bool(body.get("enabled", True))
                 self.ctx.settings.set("preview.hq_minimax_h3", enable)
@@ -572,6 +592,9 @@ class Api:
         self.ctx.settings.set("preview.taeh3_installed", status["taeh3"])
         self.ctx.settings.save()
         self.broadcast("enhancements", {"enhancements": status})
+        transcriber = self.ctx.transcriber
+        if transcriber is not None:
+            self.broadcast("transcriber", {"transcriber": transcriber.info()})
         # A node pack changes the engine's node list, so the browser refreshes it too.
         self.broadcast("nodes", {"nodes": self.ctx.manager.custom_nodes()})
         return ok({"enhancements": status, "result": result,
@@ -587,7 +610,9 @@ class Api:
             self.ctx.settings.update({"features": {
                 "image_video": bool(features.get("image_video", True)),
                 "music": bool(features.get("music", False)),
-                "seedvr": bool(features.get("seedvr", False))}})
+                "seedvr": bool(features.get("seedvr", False)),
+                "transcriber": bool(features.get(
+                    "transcriber", self.ctx.settings.features()["transcriber"]))}})
             self.ctx.settings.save()
             self.ctx.refresh_features()
         self.ctx.spawn_install(features if isinstance(features, dict) else None)
@@ -607,7 +632,8 @@ class Api:
             self.ctx.spawn_install({
                 "image_video": bool(self.ctx.settings.features()["image_video"]),
                 "music": True,
-                "seedvr": bool(self.ctx.settings.features()["seedvr"])})
+                "seedvr": bool(self.ctx.settings.features()["seedvr"]),
+                "transcriber": bool(self.ctx.settings.features()["transcriber"])})
             return ok({"started": True})
         if action == "install_deps":
             # One-click fix for ModuleNotFoundError out of a music job: pip the
@@ -628,6 +654,97 @@ class Api:
             return ok({"installed": names, "detail": result,
                        "music": self.ctx.music.info()})
         return ok({"music": self.ctx.music.info()})
+
+    # ------------------------------------------------------------------ score
+    async def job_score(self, request: web.Request) -> web.Response:
+        """The ABC of a job, read back from its own ``score.abc``.
+
+        The note grid is rebuilt from the file rather than replayed from the event
+        log, so what is drawn is what the job really used.
+        """
+        job_id = request.match_info["job_id"]
+        job = self.ctx.history.get(job_id)
+        if not job:
+            return fail("job not found", status=404)
+        stored = (job.meta or {}).get("score") or {}
+        path = str(stored.get("path") or "")
+        text = str(stored.get("abc") or "")
+        from .music_worker import _inside
+
+        resolved = _inside(path) if path else None
+        if resolved is not None and resolved.is_file():
+            text = resolved.read_text(encoding="utf-8", errors="replace")
+        check = abc.validate(text) if text.strip() else {"ok": True, "error": "",
+                                                         "summary": None}
+        return ok({"job_id": job_id, "abc": text, "valid": bool(check["ok"]),
+                   "error": check["error"], "summary": check["summary"],
+                   "grid": _score_grid(text) if check["ok"] else None,
+                   "path": path, "truncated": bool(stored.get("truncated")),
+                   "plan_dir": str((job.meta or {}).get("plan_dir") or ""),
+                   "artifacts": list((job.meta or {}).get("artifacts") or [])})
+
+    async def abc_validate(self, request: web.Request) -> web.Response:
+        """Check an edited score before spending a generation on it."""
+        body = await read_body(request)
+        text = str(body.get("abc") or "")
+        check = abc.validate(text)
+        return ok({"valid": bool(check["ok"]), "error": check["error"],
+                   "summary": check["summary"], "grid": _score_grid(text) if check["ok"] else None,
+                   "characters": len(text)})
+
+    async def abc_compare(self, request: web.Request) -> web.Response:
+        """Say what an edit changed: melody, grid, harmony or tempo."""
+        body = await read_body(request)
+        try:
+            result = abc.compare(str(body.get("before") or ""), str(body.get("after") or ""),
+                                 allow_tempo_change=bool(body.get("allow_tempo_change")))
+        except abc.AbcError as error:
+            return fail(str(error))
+        return ok({"compare": result})
+
+    async def abc_strip(self, request: web.Request) -> web.Response:
+        """Drop the chord symbols, which is what a cover melody needs."""
+        body = await read_body(request)
+        try:
+            stripped = abc.strip_chords(str(body.get("abc") or ""),
+                                        keep_voice=str(body.get("keep_voice") or "both"))
+        except abc.AbcError as error:
+            return fail(str(error))
+        check = abc.validate(stripped)
+        return ok({"abc": stripped, "valid": bool(check["ok"]), "error": check["error"],
+                   "summary": check["summary"], "grid": _score_grid(stripped) if check["ok"] else None})
+
+    async def music_transcribe(self, request: web.Request) -> web.Response:
+        """Turn an attached recording into an editable score with SheetSage2."""
+        body = await read_body(request)
+        transcriber = self.ctx.transcriber
+        if transcriber is None:
+            return fail("transcription is unavailable in this build")
+        audio = str(body.get("audio") or "").strip()
+        if not audio:
+            return fail("Attach the recording to transcribe first")
+        music = self.ctx.settings.section("music")
+        options = {
+            "task": str(body.get("task") or "melody"),
+            "device": str(body.get("device") or music.get("device") or "auto"),
+            "dtype": str(body.get("dtype") or "bf16"),
+            "threads": int(body.get("threads") or 4),
+            "max_seconds": float(body.get("max_seconds") or 0.0),
+            "melody_only": bool(body.get(
+                "melody_only", music.get("transcribe_melody_only", True))),
+            "job_id": str(body.get("job_id") or f"t{int(time.time())}"),
+        }
+        if not transcriber.installed():
+            return fail("The transcriber is not installed. Use Install under Cover a song.",
+                        status=409, transcriber=transcriber.info())
+        try:
+            result = await self._track("transcribe", lambda notify: transcriber.transcribe(
+                audio, on_log=notify, **options))
+        except (TranscribeError, ValueError, OSError) as exc:
+            return fail(str(exc), transcriber=transcriber.info())
+        self.broadcast("transcription", {"job_id": options["job_id"], **{
+            key: value for key, value in result.items() if key != "grid"}})
+        return ok({"transcription": result, "transcriber": transcriber.info()})
 
     # ----------------------------------------------------------------- assets
     async def asset_categories(self, request: web.Request) -> web.Response:
@@ -995,6 +1112,14 @@ def _first_list(info: dict[str, Any], node: str, field: str) -> list[str]:
         if isinstance(entry, list) and entry and isinstance(entry[0], list):
             return list(entry[0])
     return []
+
+
+def _score_grid(text: str) -> dict[str, Any] | None:
+    """Note data for the piano roll, or ``None`` when the score does not parse."""
+    try:
+        return abc.grid(abc.parse(text))
+    except abc.AbcError:
+        return None
 
 
 def _seedvr_options(info: dict[str, Any], node: str, scanned: list[str]) -> list[str]:

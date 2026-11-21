@@ -105,6 +105,11 @@ export const state = {
   enhancements: { kjnodes: false, taeh3: false, seedvr2: false },
   capabilities: {},
   music: {},
+  // SheetSage2: what the transcriber is and whether its environment is there.
+  transcriber: {},
+  // Last SheetSage2 result, so the Music tab can show a score after a reload of
+  // the panel and offer it again without transcribing the file twice.
+  transcription: null,
   install: {},
   system: {},
   queue: {},
@@ -126,6 +131,7 @@ export const state = {
     railFilter: '',
     sections: {},
     stageView: 'auto',
+    musicView: 'wave',
     historyCollapsed: false,
     sidebarVisible: true,
     railWidth: 372,
@@ -176,6 +182,7 @@ export const state = {
     this.enhancements = snapshot.enhancements || this.enhancements;
     this.capabilities = snapshot.capabilities || this.capabilities;
     this.music = snapshot.music || this.music;
+    this.transcriber = snapshot.transcriber || this.transcriber;
     this.install = snapshot.install || this.install;
     this.system = snapshot.system || this.system;
     this.queue = snapshot.queue || this.queue;
@@ -344,6 +351,7 @@ export const state = {
   get engineInstalled() { return !!this.engine.installed; },
   get seedvrInstalled() { return !!this.enhancements.seedvr2; },
   get musicInstalled() { return !!(this.music && (this.music.installed || this.music.stub)); },
+  get transcriberInstalled() { return !!(this.transcriber && (this.transcriber.installed || this.transcriber.stub)); },
   get hqPreviewReady() { return !!(this.enhancements.kjnodes && this.enhancements.taeh3); },
   get hqPreviewOn() { return !!(this.settings.preview && this.settings.preview.hq_minimax_h3); },
   get tabList() {
@@ -361,10 +369,10 @@ export const state = {
   },
 
   persistUI() {
-    const { tab, selectedJob, railFilter, sections, stageView, historyCollapsed,
+    const { tab, selectedJob, railFilter, sections, stageView, musicView, historyCollapsed,
       sidebarVisible, railWidth, sideWidth, historyHeight, theme, accent,
       assetsCategory, volume, muted } = this.ui;
-    saveJSON(UI_KEY, { tab, selectedJob, railFilter, sections, stageView, historyCollapsed,
+    saveJSON(UI_KEY, { tab, selectedJob, railFilter, sections, stageView, musicView, historyCollapsed,
       sidebarVisible, railWidth, sideWidth, historyHeight, theme, accent, assetsCategory,
       volume, muted });
   },

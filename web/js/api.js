@@ -96,6 +96,16 @@ export const api = {
   music: () => call('/api/music'),
   musicAction: (action, extra) => post('/api/music', { action, ...(extra || {}) }),
 
+  // Scores. A composition is edited as ABC, so these are cheap round trips: the
+  // server parses with the same parser the generator uses.
+  jobScore: (id) => call(`/api/jobs/${encodeURIComponent(id)}/score`),
+  abcValidate: (abc) => post('/api/abc/validate', { abc }),
+  abcCompare: (before, after, allowTempoChange = false) =>
+    post('/api/abc/compare', { before, after, allow_tempo_change: allowTempoChange }),
+  abcStrip: (abc, keepVoice = 'both') => post('/api/abc/strip', { abc, keep_voice: keepVoice }),
+  transcribe: (audio, options = {}) => post('/api/music/transcribe', { audio, ...options }),
+  installTranscriber: (enabled = true) => post('/api/enhancements', { name: 'transcriber', enabled }),
+
   categories: () => call('/api/assets/categories'),
   assets: (category, subfolder, root = 'models') => {
     const params = new URLSearchParams({ category, subfolder: subfolder || '', root });

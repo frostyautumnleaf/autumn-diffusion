@@ -1065,15 +1065,21 @@ body.history-collapsed .history-body { display: none; }
 .music-head { display: flex; align-items: flex-start; gap: 12px; }
 .music-title { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
 .music-sub { font-size: 11.5px; color: var(--text-mute); }
-.music-wave { flex: 1; min-height: 132px; display: flex; }
+/* The stage is a fixed height, so the media, the transport and the stats all
+   have to fit inside it: a tall waveform that pushes the stats out of the box is
+   worse than a slightly shorter one with the numbers still readable. */
+.music-wave { flex: 1; min-height: 88px; display: flex; }
+/* The stats read as one inline line rather than a block of cards: the stage is a
+   fixed height, and a single line leaves room for a real waveform. */
 .music-meta {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(126px, 1fr)); gap: 12px 18px;
-  border-top: 1px solid var(--line); padding-top: 12px;
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 18px;
+  border-top: 1px solid var(--line); padding-top: 9px;
 }
-.music-meta .stat { border: 0; background: transparent; padding: 0; }
+.music-meta .stat { display: flex; align-items: baseline; gap: 7px; border: 0; background: transparent; padding: 0; }
+.music-meta .stat .k { font-size: 9px; letter-spacing: 0.08em; }
 .music-meta .stat .v {
-  font-family: var(--mono); font-size: 12.5px; font-weight: 540; color: var(--text-dim);
-  overflow-wrap: anywhere;
+  font-family: var(--mono); font-size: 11.5px; font-weight: 540; color: var(--text-dim);
+  margin-top: 0; overflow-wrap: anywhere;
 }
 .music-idle {
   position: absolute; inset: 0; display: grid; place-items: center; gap: 6px;
@@ -1082,7 +1088,7 @@ body.history-collapsed .history-body { display: none; }
 .music-idle .e-ic { color: var(--text-faint); opacity: 0.5; transition: transform var(--dur-slow) var(--ease-out); }
 .music-stage:hover .music-idle .e-ic { transform: scale(1.1); }
 .music-stage .wave-wrap { flex: 1; min-width: 0; gap: 10px; position: relative; }
-.music-stage .wave-shell { flex: 1; min-height: 116px; }
+.music-stage .wave-shell { flex: 1; min-height: 88px; }
 .music-stage .wave-shell canvas { height: 100%; }
 .music-stage .player { padding-top: 2px; }
 .music-stage .player .icon-btn.play {
@@ -1091,6 +1097,88 @@ body.history-collapsed .history-body { display: none; }
 }
 .music-stage .player .icon-btn.play:hover { transform: scale(1.08); }
 .music-stage .player .p-time.right { text-align: right; }
+
+/* Score roll -------------------------------------------------------------
+   The piano roll of a YuE plan. It is drawn on a canvas, so only the frame, the
+   toolbar and the tooltip are styled. */
+.music-views { flex: none; }
+.music-views button { gap: 5px; }
+.music-views button span { display: inline-flex; align-items: center; }
+/* A job that planned something says so, so the score is not left hidden. */
+.music-views.has-score button:last-child::after {
+  content: ''; position: absolute; top: -3px; right: -3px; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg-1);
+}
+.music-roll { flex: 1; min-width: 0; min-height: 0; display: flex; }
+/* Score view: the roll bar already reads out tempo, key, metre and length, so the
+   stats row would only repeat it. The roll takes that height instead, because a
+   piano roll with 40 px of pitch range is unreadable. */
+.music-stage.show-score .music-meta { display: none; }
+/* The prompt line is already readable in the composer, and the roll bar repeats
+   the length, so the score view drops it to buy the roll another row or two. */
+.music-stage.show-score .music-sub { display: none; }
+/* A tighter switch: the score view trades the head's height for roll height. */
+.music-stage.show-score .music-views button { padding: 3px 9px; font-size: 11px; }
+/* The score view is a grid, not a flex column: the head and the transport are
+   fixed, and the roll gets every pixel left, so it cannot be squeezed below the
+   height its own toolbar and canvas need. */
+.music-stage.show-score .music-shell {
+  display: grid; grid-template-rows: auto minmax(145px, 1fr) auto; gap: 11px;
+}
+.music-stage.show-score .roll-body { min-height: 112px; }
+.music-stage.show-score .player { border-top: 1px solid var(--line); padding-top: 8px; }
+.roll-shell { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 9px; }
+.roll-bar { display: flex; align-items: center; gap: 7px; min-height: 24px; }
+.roll-bar .roll-read { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.01em; }
+.roll-body {
+  position: relative; flex: 1; min-height: 132px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg-2); overflow: hidden;
+}
+.roll-body canvas.roll {
+  display: block; width: 100%; height: 100%;
+  cursor: crosshair; touch-action: none;
+}
+.roll-tip {
+  position: absolute; z-index: 3; pointer-events: none;
+  display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap;
+  padding: 6px 9px; border-radius: 8px;
+  background: var(--bg-4); border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow); font-size: 11.5px; color: var(--text);
+  animation: pop-in var(--dur-fast) var(--ease-out) both;
+}
+.roll-tip b { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--accent); }
+.roll-tip .tiny { width: 100%; }
+.roll-empty {
+  position: absolute; inset: 0; display: grid; place-items: center; gap: 6px;
+  padding: 22px; text-align: center; color: var(--text-faint); font-size: 12px;
+}
+.roll-empty .e-ic { color: var(--text-faint); opacity: 0.55; }
+
+/* Notes and warnings, as a list in a modal */
+.note-list { display: flex; flex-direction: column; gap: 7px; }
+.note-row {
+  display: flex; align-items: flex-start; gap: 8px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--bg-2); padding: 8px 10px; font-size: 11.5px; color: var(--text-dim);
+}
+.note-row .ic { color: var(--warn); flex: none; padding-top: 1px; }
+.menu-item .tick { color: var(--accent); display: inline-flex; }
+
+/* What a score check found, and what an edit moved. Each line carries one fact, so
+   the difference list reads as a list rather than as a paragraph of prose. */
+.score-lines { display: flex; flex-direction: column; gap: 6px; }
+.score-lines .line {
+  display: flex; gap: 8px; align-items: baseline;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--bg-2); padding: 7px 10px; font-size: 11.5px; color: var(--text-dim);
+}
+.score-lines .line::before {
+  content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--text-faint);
+}
+.score-lines .line.good::before { background: var(--ok); }
+.score-lines .line.bad::before { background: var(--err); }
 
 /* Tooltips ---------------------------------------------------------------
    A tooltip has a title, the explanation, and an optional example. The example is

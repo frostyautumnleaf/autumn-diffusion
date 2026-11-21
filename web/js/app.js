@@ -9,7 +9,7 @@ import { state, TOPICS } from './state.js';
 import { api } from './api.js';
 import { Socket } from './ws.js';
 import { icon } from './icons.js';
-import { toast, menu } from './components.js';
+import { toast, menu, modal } from './components.js';
 import { Panel } from './panel.js';
 import { Composer, missingPrimary } from './composer.js';
 import { Stage } from './preview.js';
@@ -512,6 +512,16 @@ class App {
       state.music = { ...(state.music || {}), ...(data.music || {}) };
       if (this.musicStage) this.musicStage.pushStatus(data);
     });
+    // SheetSage2 installed or removed: the Cover a song section changes shape.
+    socket.on('transcriber', (data) => {
+      state.transcriber = { ...(state.transcriber || {}), ...((data && data.transcriber) || {}) };
+      state.emit(TOPICS.settings);
+    });
+    // The plan a running job just wrote: drawn as a piano roll before any sound.
+    socket.on('score', (data) => {
+      if (this.musicStage) this.musicStage.pushScore(data);
+    });
+    socket.on('transcription', (data) => this.onTranscription(data));
 
     socket.on('engine', (data) => {
       state.engine = { ...(state.engine || {}), ...(data.engine || {}) };
@@ -554,6 +564,59 @@ class App {
     } else if (status === 'closed' || status === 'error') {
       state.connected = false;
     }
+  }
+
+  /**
+   * SheetSage2 finished with a recording: the ABC of a song that was never written down.
+   *
+   * The result arrives with the choice attached, because transcribing is only half
+   * of covering a song — the melody has to go back into a generation.
+   */
+  onTranscription(data) {
+    if (!data) return;
+    if (data.error) {
+      toast(`Transcription failed: ${data.error}`, { kind: 'err', timeout: 9000 });
+      return;
+    }
+    const summary = data.summary || {};
+    const vocal = (summary.voices || {}).Vocal || {};
+    const bars = Number(vocal.measures || 0);
+    const notes = Number(vocal.notes || 0);
+    const bits = [bars ? `${num(bars)} bars` : 'a score', notes ? `${num(notes)} notes` : ''];
+    if (summary.bpm) bits.push(`${num(summary.bpm)} BPM`);
+    if (summary.key) bits.push(String(summary.key));
+    toast(`Transcribed ${bits.filter(Boolean).join(' · ')}`
+      + (data.chords ? ` · ${num(data.chords)} chords` : ''), {
+      kind: data.valid === false ? 'warn' : 'ok',
+      timeout: 10000,
+      action: { label: 'Use this melody', run: () => this.useTranscription(data) },
+    });
+    const warnings = data.warnings || [];
+    if (warnings.length) {
+      toast(`The transcriber flagged ${warnings.length} thing${warnings.length > 1 ? 's' : ''}`, {
+        kind: 'warn',
+        timeout: 8000,
+        action: { label: 'Read them', run: () => showTranscriptionNotes(warnings) },
+      });
+    }
+    state.transcription = data;
+  }
+
+  /**
+   * Put a transcribed melody into the music form.
+   *
+   * Chain of thought moves to `melody`: the model is told to keep this tune and
+   * invent the rest, which is what a cover needs. Anything else would let the
+   * planner write a different melody over the top of the one just transcribed.
+   */
+  useTranscription(data) {
+    const abc = String((data && data.abc) || '');
+    if (!abc.trim()) { toast('That transcription holds no notes', { kind: 'warn' }); return; }
+    this.setTab('music');
+    state.setForm('music', { abc, cot: 'melody' });
+    toast('Melody loaded into the form — the model will follow it', {
+      kind: 'ok', timeout: 4200,
+    });
   }
 
   onJobDone(data) {
@@ -929,6 +992,30 @@ function applySizes() {
   document.documentElement.style.setProperty('--rail-w', `${state.ui.railWidth}px`);
   document.documentElement.style.setProperty('--side-w', `${state.ui.sideWidth}px`);
   document.documentElement.style.setProperty('--history-h', `${state.ui.historyHeight}px`);
+}
+
+/**
+ * List what the transcriber was unsure about.
+ *
+ * SheetSage2 says when it heard a melody that could be one of two things, and a
+ * person editing a cover wants to know which bars to listen to before trusting
+ * the roll, so the warnings are shown rather than dropped.
+ */
+function showTranscriptionNotes(warnings) {
+  modal({
+    title: 'Transcription notes',
+    icon: 'warning',
+    width: 560,
+    body: (root) => {
+      clear(root);
+      root.appendChild(el('div', { class: 'note-list' }, (warnings || []).map((line) => el(
+        'div', { class: 'note-row' }, [
+          el('span', { class: 'ic', html: icon('info', 13) }),
+          el('span', { class: 'grow', text: String(line) }),
+        ]))));
+    },
+    actions: [{ label: 'Close', kind: 'ghost', run: (close) => close() }],
+  });
 }
 
 // Boot ---------------------------------------------------------------------

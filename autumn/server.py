@@ -55,6 +55,9 @@ class Context:
     system: SystemInfo
     hub: EventHub
     runner: JobRunner
+    #: SheetSage2 transcription, built lazily: it is optional and only the Music
+    #: tab asks for it.
+    transcriber: Any = None
     started_at: float = field(default_factory=time.time)
     demo: Any = None
     tasks: set[asyncio.Task] = field(default_factory=set)
@@ -62,6 +65,10 @@ class Context:
     # ------------------------------------------------------------- lifecycle
     def wire(self) -> None:
         """Connect the callbacks that tie the components together."""
+        if self.transcriber is None:
+            from .transcribe import Transcriber
+
+            self.transcriber = Transcriber(self.settings)
         self.runner.attach_engine()
         self.manager.on_state = lambda state: self.hub.publish(
             "engine", {"engine": self.engine_state()})
@@ -176,6 +183,7 @@ class Context:
             "enhancements": self.manager.enhancement_status(),
             "capabilities": self.runner.capabilities(),
             "music": self.music.info(),
+            "transcriber": self.transcriber.info() if self.transcriber else {},
             "install": self.installer.status(),
             "system": self.system.snapshot(),
             "queue": self.runner.status(),

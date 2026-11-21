@@ -1,13 +1,16 @@
 // Music stage: the middle of the window on the music tab.
 //
-// It shows the interactive waveform of the selected track, the YuE pipeline
-// stages while a job runs, and a live waveform that fills in as VAE tiles are
-// decoded. The waveform itself lives in waveform.js; this class keeps it fed.
+// Two views share the space: the interactive waveform of the selected track, with
+// a live waveform that fills in as VAE tiles are decoded, and the piano roll of
+// the ABC score YuE plans before it makes any sound. The waveform lives in
+// waveform.js and the roll in score.js; this class keeps both fed and decides
+// which one is on screen.
 
 import { state, TOPICS } from './state.js';
 import { icon } from './icons.js';
 import { toast, lightbox, attachContextMenu } from './components.js';
 import { Waveform } from './waveform.js';
+import { ScoreRoll } from './score.js';
 import { el, clear, baseName, mediaUrl, seconds as secs, dateTime, num, copyText } from './util.js';
 import { describe, summarise, modelLabel } from './preview.js';
 import { loadIntoForm } from './history.js';
@@ -26,12 +29,26 @@ export class MusicStage {
     this.root = root;
     this.jobId = null;
     this.status = null;      // last `music_status` payload
+    this.scoreJobId = null;  // job the score on screen belongs to
+    this.score = null;       // last score payload, kept across a repaint
+    this.view = state.ui.musicView || 'wave';
     this.waveform = new Waveform(el('div'));
+    this.roll = new ScoreRoll({
+      // The player owns the clock, so the roll asks it where it is each frame and
+      // clicks back into it. One play head, in both views.
+      onTime: () => this.waveform.playhead,
+      onSeek: (seconds) => this.waveform.seek(seconds),
+    });
     this.render();
 
     state.on(TOPICS.jobs, () => this.syncJob());
     state.on(TOPICS.ui, (patch) => {
-      if (patch && patch.selectedJob !== undefined) this.syncJob();
+      if (!patch) return;
+      if (patch.selectedJob !== undefined) this.syncJob();
+      if (patch.musicView !== undefined && patch.musicView !== this.view) {
+        this.view = patch.musicView;
+        this.applyView();
+      }
     });
   }
 
@@ -42,6 +59,62 @@ export class MusicStage {
     // The pill in the bar reads this status, so both pieces are refreshed together.
     this.paintFoot();
     this.paintBar();
+  }
+
+  /**
+   * A `score` event: the ABC the planner wrote, already parsed server-side.
+   *
+   * The plan arrives before any audio, so the roll is the first thing a run puts
+   * on screen. Selecting another job while one runs must not drop this score, so
+   * it is keyed by job id and re-applied by `loadScore`.
+   */
+  pushScore(data) {
+    const jobId = data && data.job_id ? String(data.job_id) : this.jobId;
+    if (!jobId || jobId !== this.jobId) return;
+    this.score = data;
+    this.scoreJobId = jobId;
+    this.roll.setScore(data);
+    this.paintScoreFlag();
+  }
+
+  /** Fetch the score of a job, which is what brings back an old track's plan. */
+  async loadScore(job) {
+    const id = job ? job.id : null;
+    if (!id) {
+      this.score = null;
+      this.scoreJobId = null;
+      this.roll.setScore(null);
+      return;
+    }
+    if (this.score && this.scoreJobId === id) {
+      this.roll.setScore(this.score);
+      this.paintScoreFlag();
+      return;
+    }
+    this.scoreJobId = id;
+    const meta = (job.meta || {}).score || {};
+    // A compose job delivers a score and no audio, so ask even when nothing played.
+    const hasScore = Boolean(meta.path || meta.abc || (job.files || []).length
+      || (job.meta || {}).score);
+    if (!hasScore && job.status !== 'running') {
+      this.score = null;
+      this.roll.setScore(null);
+      this.paintScoreFlag();
+      return;
+    }
+    try {
+      const { api } = await import('./api.js');
+      const data = await api.jobScore(id);
+      if (this.scoreJobId !== id) return;
+      this.score = data;
+      this.roll.setScore(data);
+    } catch (err) {
+      if (this.scoreJobId !== id) return;
+      this.score = null;
+      this.roll.setScore(err.payload && err.payload.abc
+        ? { abc: err.payload.abc, valid: false, error: err.message } : null);
+    }
+    this.paintScoreFlag();
   }
 
   render() {
@@ -82,6 +155,14 @@ export class MusicStage {
       { label: 'Back to the start', icon: 'skip', disabled: !this.waveform.jobId,
         run: () => this.waveform.seek(0) },
       { label: 'Stop every track', icon: 'stop', run: () => this.waveform.pauseAll() },
+      { sep: true },
+      { label: this.view === 'score' ? 'Show the waveform' : 'Show the planned score',
+        icon: this.view === 'score' ? 'wave' : 'code',
+        run: () => this.setView(this.view === 'score' ? 'wave' : 'score') },
+      { label: 'Copy the ABC score', icon: 'copy', disabled: !(this.score && this.score.abc),
+        run: () => copyText(this.score.abc)
+          .then(() => toast('ABC copied — paste it into Composition to edit', { kind: 'ok', timeout: 2200 }))
+          .catch(() => toast('Could not copy', { kind: 'err' })) },
       { sep: true },
       { label: 'Open in the viewer', icon: 'expand', disabled: !file, run: () => this.openResult() },
       { label: 'Download the track', icon: 'download', disabled: !file,
@@ -156,6 +237,7 @@ export class MusicStage {
         el('div', { class: 'music-title', text: job ? (baseName(job.title || '') || 'Untitled track') : 'Nothing to play' }),
         el('div', { class: 'music-sub', text: job ? musicLine(job) : 'Write a prompt, then press Generate.' }),
       ]),
+      this.viewSwitch(),
       job ? el('button', {
         class: 'btn sm ghost', html: `${icon('copy', 12)}<span>Copy settings</span>`,
         onclick: () => copyTrackSettings(job),
@@ -163,8 +245,15 @@ export class MusicStage {
     ]);
 
     const waveHost = el('div', { class: 'music-wave' });
+    const scoreHost = el('div', { class: 'music-roll' });
+    this.waveHost = waveHost;
+    this.scoreHost = scoreHost;
     this.waveform.mount(waveHost);
-    this.canvas.appendChild(el('div', { class: 'music-shell anim-up' }, [head, waveHost]));
+    this.roll.mount(scoreHost);
+    // The transport belongs to the track, not to one view: the piano roll follows
+    // the play head, so it needs the same play / seek / volume row underneath it.
+    this.canvas.appendChild(el('div', { class: 'music-shell anim-up' },
+      [head, waveHost, scoreHost, this.waveform.player]));
 
     if (!job) {
       this.canvas.appendChild(el('div', { class: 'music-idle' }, [
@@ -173,14 +262,78 @@ export class MusicStage {
         el('div', { class: 'tiny faint', text: 'Waveforms appear here as soon as audio starts decoding.' }),
       ]));
       this.waveform.setJob(null, { live: false });
+      this.loadScore(null);
     } else {
       const running = job.status === 'running' || job.status === 'queued';
       this.waveform.setJob(job, { live: running && job.status === 'running' });
       this.paintInfo(job);
+      this.loadScore(job);
     }
 
+    this.applyView();
     this.paintProgress(job);
     this.paintFoot();
+  }
+
+  /**
+   * The Waveform / Score switch.
+   *
+   * The score is only interesting for a job that has one, but the control stays
+   * visible either way: a switch that appears and disappears moves the buttons
+   * beside it, and a click meant for "copy settings" lands somewhere else.
+   */
+  viewSwitch() {
+    const build = (id, label, iconName) => el('button', {
+      class: this.view === id ? 'on' : '',
+      html: `${icon(iconName, 12)}<span>${label}</span>`,
+      title: id === 'wave' ? 'Show the waveform of the track'
+        : 'Show the planned score as a piano roll',
+      onclick: () => this.setView(id),
+    });
+    return el('div', { class: 'segmented music-views' }, [
+      build('wave', 'Waveform', 'wave'),
+      build('score', 'Score', 'code'),
+    ]);
+  }
+
+  setView(view) {
+    if (view === this.view) return;
+    this.view = view;
+    state.setUI({ musicView: view });
+    // The head is rebuilt rather than patched: two buttons and no flicker risk.
+    const job = this.current();
+    const head = this.canvas.querySelector('.music-head');
+    if (head && job) {
+      const old = head.querySelector('.music-views');
+      if (old) old.replaceWith(this.viewSwitch());
+    }
+    this.applyView();
+  }
+
+  /** Show one view, and let only the visible one animate. */
+  applyView() {
+    const score = this.view === 'score';
+    if (this.waveHost) this.waveHost.style.display = score ? 'none' : '';
+    if (this.scoreHost) this.scoreHost.style.display = score ? '' : 'none';
+    this.root.classList.toggle('show-score', score);
+    this.roll.setActive(score);
+    if (score) {
+      // The roll is laid out hidden, so its size is only known now.
+      requestAnimationFrame(() => this.roll.resize());
+    }
+  }
+
+  /** Mark the switch when a plan exists, so the score is not hidden by accident. */
+  paintScoreFlag() {
+    const node = this.canvas.querySelector('.music-views');
+    if (!node) return;
+    const has = Boolean(this.score && this.score.grid);
+    node.classList.toggle('has-score', has);
+    const score = node.lastElementChild;
+    if (score && score.firstElementChild) {
+      score.title = has ? 'Show the planned score as a piano roll'
+        : 'Show the plan as a piano roll — this job has none';
+    }
   }
 
   paintInfo(job) {

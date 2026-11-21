@@ -169,7 +169,10 @@ export function menu(anchor, items, { align = 'right', offset = 4, at = null } =
       class: `menu-item ${item.danger ? 'danger' : ''}`,
       onclick: (event) => { event.stopPropagation(); closeMenu(); if (!item.disabled) item.run && item.run(); },
     }, [
-      item.icon ? el('span', { html: icon(item.icon, 14) }) : el('span', { style: { width: '14px' } }),
+      // A checked toggle keeps the leading slot, so the labels of a list line up.
+      item.icon ? el('span', { html: icon(item.icon, 14) })
+        : item.checked ? el('span', { class: 'tick', html: icon('check', 14) })
+          : el('span', { style: { width: '14px' } }),
       el('span', { class: 'grow', text: item.label }),
       item.hint ? el('span', { class: 'tiny faint mono', text: item.hint }) : null,
     ]));

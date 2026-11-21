@@ -724,6 +724,17 @@ class JobRunner:
                                          "seconds": float(event.get("seconds") or 0.0),
                                          "approximate": bool(event.get("approximate"))})
             return
+        if kind == "score":
+            # The planner's ABC. The note grid is only sent live: it is big, and the
+            # browser asks for it again from the job's own score.abc when it needs it.
+            score = {"abc": event.get("abc", ""), "valid": bool(event.get("valid", True)),
+                     "error": event.get("error", ""), "summary": event.get("summary"),
+                     "path": event.get("path", ""),
+                     "truncated": bool(event.get("truncated", False))}
+            self.history.update(job_id, meta={**job.meta, "score": score})
+            await self._emit("score", {"job_id": job_id, **score,
+                                      "grid": event.get("grid")})
+            return
         if kind == "audio":
             await self._on_music_audio(job, event)
             return

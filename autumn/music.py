@@ -124,6 +124,9 @@ class MusicRunner:
         env["AUTUMN_MUSIC_OUTPUT"] = str(self.output_dir)
         env["AUTUMN_YUE_DIR"] = str(self.yue_dir)
         env["AUTUMN_LIVE_DIR"] = str(self.live_dir)
+        # The worker checks every path it is given against the program folder, so it
+        # has to be told which folder that is: a moved install gets its own root.
+        env["AUTUMN_HOME"] = str(LAYOUT.root)
         if self.use_stub:
             env["AUTUMN_MUSIC_STUB"] = "1"
         env.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "0")
@@ -208,7 +211,8 @@ class MusicRunner:
         payload = dict(params)
         music = self.settings.section("music")
         for key in ("model", "vae", "device", "low_vram", "ode_steps", "abc_sampling",
-                    "semantic_sampling", "cot", "token", "cache_dir"):
+                    "semantic_sampling", "cot", "token", "cache_dir", "mode",
+                    "plan_dir", "latent", "decoder", "save_artifacts"):
             if payload.get(key) in (None, "") and key in music:
                 payload[key] = music[key]
         if not payload.get("model"):

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import platform
 import re
 import shutil
@@ -39,6 +40,8 @@ from .comfy_manager import SEEDVR2_DIR_NAMES as _SEEDVR2_NAMES
 from .config import Settings
 from .log import get
 from .paths import LAYOUT, MODEL_FOLDERS, rel
+from .transcribe import (FALLBACK_PACKAGES, MERT_REPO, MERT_REVISION, SCRIPT_PARTS,
+                         SHEET_SAGE_REPO, SHEET_SAGE_REVISION, _snapshot_command)
 
 log = get("installer")
 
@@ -236,6 +239,14 @@ class Installer:
                 "kjnodes": enhancements.get("kjnodes", False),
                 "taeh3": enhancements.get("taeh3", False),
                 "seedvr2": enhancements.get("seedvr2", False),
+                "transcriber": self.transcriber_ready(),
+            },
+            "transcriber": {
+                "wanted": bool(features.get("transcriber")),
+                "installed": self.transcriber_ready(),
+                "python": rel(LAYOUT.transcribe_python),
+                "model": rel(LAYOUT.sheetsage_dir),
+                "script": rel(LAYOUT.yue_dir.joinpath(*SCRIPT_PARTS)),
             },
             "models": self._model_counts(),
             "disk_free_gb": free_disk_gb(LAYOUT.root),
@@ -247,6 +258,14 @@ class Installer:
             "last_run": self._read_state(),
             "log": self._lines[-200:],
         }
+
+    def transcriber_ready(self) -> bool:
+        """SheetSage2 is usable once its environment and its weights are both there."""
+        if os.environ.get("AUTUMN_TRANSCRIBE_STUB"):
+            return True
+        return (LAYOUT.transcribe_python.is_file()
+                and (LAYOUT.sheetsage_dir / "config.json").is_file()
+                and LAYOUT.yue_dir.joinpath(*SCRIPT_PARTS).is_file())
 
     def _model_counts(self) -> dict[str, int]:
         counts: dict[str, int] = {}
@@ -271,7 +290,8 @@ class Installer:
         want_media = bool(features.get("image_video"))
         want_music = bool(features.get("music"))
         plan = InstallPlan(features={"image_video": want_media, "music": want_music,
-                                     "seedvr": bool(features.get("seedvr"))})
+                                     "seedvr": bool(features.get("seedvr")),
+                                     "transcriber": bool(features.get("transcriber"))})
         plan.add("venv", "Create the program virtual environment")
         if want_media:
             plan.add("app", "Install dashboard requirements")
@@ -284,6 +304,8 @@ class Installer:
             plan.add("music-reqs", "Install YuE requirements into .venv-music")
         if want_media and bool(features.get("seedvr")):
             plan.add("seedvr", "Install SeedVR2 video upscaler")
+        if want_music and bool(features.get("transcriber")):
+            plan.add("transcriber", "Install the SheetSage2 transcriber")
         plan.add("finalise", "Write settings and finish setup")
 
         state = self.status()
@@ -299,6 +321,8 @@ class Installer:
             elif step.key == "music-venv" and state["music"]["venv"]:
                 step.done, step.detail = True, "already present"
             elif step.key == "seedvr" and state["add-ons"]["seedvr2"]:
+                step.done, step.detail = True, "already installed"
+            elif step.key == "transcriber" and state["add-ons"]["transcriber"]:
                 step.done, step.detail = True, "already installed"
         return plan
 
@@ -373,6 +397,9 @@ class Installer:
         if key == "seedvr":
             result = await self.install_seedvr(progress=report)
             return str(result.get("path", ""))
+        if key == "transcriber":
+            result = await self.install_transcriber(progress=report)
+            return str(result.get("model", ""))
         if key == "finalise":
             return self.finalise(report=report)
         return ""
@@ -395,11 +422,20 @@ class Installer:
             log.debug("progress callback failed", exc_info=True)
 
     # -------------------------------------------------------------- primitives
+    @staticmethod
+    def _venv_python(target: Path) -> Path:
+        """The interpreter inside one of the program's own environments."""
+        if target == LAYOUT.music_venv_dir:
+            return LAYOUT.music_python
+        if target == LAYOUT.transcribe_venv_dir:
+            return LAYOUT.transcribe_python
+        return LAYOUT.python
+
     async def ensure_venv(self, target: Path, *, report: Callable[[str], None] | None = None,
                           pip_ok: bool = True) -> str:
         """Create a venv with pip inside it. Idempotent."""
         report = report or (lambda message: None)
-        python = LAYOUT.python if target == LAYOUT.venv_dir else LAYOUT.music_python
+        python = self._venv_python(Path(target))
         if python.is_file():
             report(f"{rel(target)} already exists")
             return rel(python)
@@ -545,6 +581,54 @@ class Installer:
 
     async def install_taeh3(self, *, progress: Callable[[str], None] | None = None) -> dict:
         return await self.manager.install_taeh3(progress=progress or self.manager.on_log)
+
+    async def install_transcriber(self, *, progress: Callable[[str], None] | None = None) -> dict:
+        """Optional SheetSage2 environment, for covers that start from a recording.
+
+        Kept out of ``.venv-music`` deliberately: the transcriber pins its own torch,
+        and sharing an environment is how a working music install breaks. The weights
+        are pinned to the revisions YuE validated, and live under ``models/``.
+        """
+        notify = progress or self.manager.on_log
+        await self.install_yue(report=notify)      # the transcriber script ships with YuE
+        python = LAYOUT.transcribe_python
+        await self.ensure_venv(LAYOUT.transcribe_venv_dir, report=notify)
+        notify("Installing the snapshot downloader")
+        code, out, _ = await self.runner.run(
+            [str(python), "-m", "pip", "install", "--disable-pip-version-check",
+             "huggingface-hub"], cwd=LAYOUT.root, timeout=1800)
+        if code != 0:
+            raise RuntimeError(f"could not install huggingface-hub: {out[-500:]}")
+        for repo, revision, target in ((SHEET_SAGE_REPO, SHEET_SAGE_REVISION,
+                                        LAYOUT.sheetsage_dir),
+                                       (MERT_REPO, MERT_REVISION,
+                                        LAYOUT.root / "models" / "MERT-v2-FullSong")):
+            notify(f"Downloading {repo} ({revision[:8]}) into {rel(target)}")
+            code, out, _ = await self.runner.run(
+                _snapshot_command(python, repo, revision, target),
+                cwd=LAYOUT.root, timeout=7200)
+            if code != 0:
+                raise RuntimeError(f"could not download {repo}: {out[-500:]}")
+        requirements = LAYOUT.sheetsage_dir / "requirements.txt"
+        if requirements.is_file():
+            notify("Installing the transcriber's pinned requirements")
+            argv = [str(python), "-m", "pip", "install", "--disable-pip-version-check",
+                    "-r", str(requirements)]
+            packages = [str(requirements.name)]
+        else:
+            notify("Installing the transcriber packages")
+            argv = [str(python), "-m", "pip", "install", "--disable-pip-version-check",
+                    *FALLBACK_PACKAGES]
+            packages = list(FALLBACK_PACKAGES)
+        code, out, _ = await self.runner.run(argv, cwd=LAYOUT.root, timeout=7200)
+        if code != 0:
+            raise RuntimeError(f"transcriber requirements failed: {out[-500:]}")
+        self.settings.set("features.transcriber", True)
+        self.settings.save()
+        _mark(self, "transcriber")
+        notify(f"Transcriber ready: {rel(python)}")
+        return {"ok": True, "python": rel(python), "model": rel(LAYOUT.sheetsage_dir),
+                "packages": len(packages)}
 
     async def install_custom_node(self, repo_url: str, *, name: str = "",
                                   progress: Callable[[str], None] | None = None) -> dict:

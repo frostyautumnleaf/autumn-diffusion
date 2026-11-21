@@ -19,6 +19,7 @@ import numpy as np
 import pytest
 
 from autumn.music import MusicRunner
+from autumn.paths import rel
 
 TIMEOUT = 90
 
@@ -587,3 +588,89 @@ async def test_live_tiles_cover_the_track_without_gaps(runner):
     assert merged
     silent = sum(1 for value in merged if value <= 0.001)
     assert silent / len(merged) < 0.05, f"{silent} of {len(merged)} buckets are empty"
+
+
+# --------------------------------------------------------------- job modes
+#
+# A song is four stages, and each stage is a job of its own: compose stops after
+# the planner and hands back a score, render starts again from that plan, and a
+# re-decode starts from the latents. The stub worker really runs as a child
+# process here, so what crosses the process boundary is what the browser sees.
+
+async def test_a_compose_job_hands_back_a_plan_and_a_score_not_audio(runner, home):
+    await runner.start("compose-1", {"prompt": "jangly indie pop", "mode": "compose"})
+
+    score = await _wait_for(runner.test_events, "score", "compose-1")
+    done = await _wait_for(runner.test_events, "done", "compose-1")
+
+    assert done["mode"] == "compose"
+    assert done["files"] == []                 # nothing to play yet
+    assert done["audio_seconds"] == 0.0
+    assert score["valid"] is True and score["grid"]["bars"]
+    plan_dir = home.root / done["plan_dir"]
+    assert (plan_dir / "plan.json").is_file()
+    assert (plan_dir / "plan_manifest.json").is_file()
+    assert (plan_dir / "score.abc").read_text(encoding="utf-8") == score["abc"]
+    assert "score.abc" in done["artifacts"]
+    # The decode stages never ran, so no waveform was streamed either.
+    stages = {event.get("stage") for event in runner.test_events
+              if event.get("event") == "stage" and event.get("job_id") == "compose-1"}
+    assert "plan" in stages and "vae" not in stages
+    assert not [event for event in runner.test_events
+                if event.get("event") == "audio" and event.get("job_id") == "compose-1"]
+
+
+async def test_rendering_a_saved_plan_sings_the_score_it_was_given(runner, home):
+    await runner.start("compose-2", {"prompt": "slow waltz", "mode": "compose"})
+    composed = await _wait_for(runner.test_events, "done", "compose-2")
+
+    await runner.start("render-2", {"mode": "render", "plan_dir": composed["plan_dir"]})
+    done = await _wait_for(runner.test_events, "done", "render-2")
+    scores = [event for event in runner.test_events
+              if event.get("event") == "score" and event.get("job_id") == "render-2"]
+
+    assert done["mode"] == "render"
+    assert done["files"] and done["audio_seconds"] > 0.0
+    # The plan is reused verbatim, so the score that sounds is the one composed.
+    assert scores and scores[0]["abc"] == composed["score"]["abc"]
+
+
+async def test_rendering_a_plan_that_is_not_there_names_the_folder(runner):
+    await runner.start("render-missing", {"mode": "render",
+                                          "plan_dir": "output/music/no-such-job"})
+
+    error = await _wait_for(runner.test_events, "error", "render-missing", timeout=30)
+    assert "plan" in error["error"].lower()
+
+
+async def test_a_second_take_from_saved_latents_keeps_the_original_score(runner, home):
+    await runner.start("song-10", {"prompt": "bright two-step", "save_artifacts": True})
+    first = await _wait_for(runner.test_events, "done", "song-10")
+
+    assert "latent.npy" in first["artifacts"]
+    latent = Path(first["output"]) / "latent.npy"
+    assert latent.is_file()
+
+    await runner.start("take-2", {"mode": "redecode", "latent": rel(latent)})
+    second = await _wait_for(runner.test_events, "done", "take-2")
+
+    assert second["mode"] == "redecode"
+    assert second["files"] and second["audio_seconds"] > 0.0
+    assert second["latent_frames"] > 0
+    assert "score.abc" in second["artifacts"]          # same provenance, new take
+    assert (Path(second["output"]) / "score.abc").is_file()
+
+
+async def test_a_redecode_without_latents_says_what_it_wanted(runner):
+    await runner.start("take-missing", {"mode": "redecode",
+                                        "latent": "output/music/nothing/latent.npy"})
+
+    error = await _wait_for(runner.test_events, "error", "take-missing", timeout=30)
+    assert "latent.npy" in error["error"]
+
+
+async def test_a_mode_the_worker_does_not_know_fails_before_anything_runs(runner):
+    await runner.start("bad-mode", {"prompt": "a song", "mode": "teleport"})
+
+    error = await _wait_for(runner.test_events, "error", "bad-mode", timeout=30)
+    assert "teleport" in error["error"] or "music mode" in error["error"].lower()

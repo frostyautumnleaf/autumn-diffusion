@@ -47,8 +47,23 @@ class Layout:
         base = self.music_venv_dir
         return (base / "Scripts" / exe) if os.name == "nt" else (base / "bin" / exe)
 
+    @property
+    def transcribe_venv_dir(self) -> Path:
+        """Separate environment for SheetSage2, which needs other package versions."""
+        return self.root / ".venv-transcribe"
+
+    @property
+    def transcribe_python(self) -> Path:
+        exe = "python.exe" if os.name == "nt" else "python"
+        base = self.transcribe_venv_dir
+        return (base / "Scripts" / exe) if os.name == "nt" else (base / "bin" / exe)
+
     def python_for(self, use: str) -> Path:
-        return self.music_python if use == "music" else self.python
+        if use == "music":
+            return self.music_python
+        if use == "transcribe":
+            return self.transcribe_python
+        return self.python
 
     # --- engines -------------------------------------------------------------
     @property
@@ -86,6 +101,11 @@ class Layout:
     @property
     def yue_dir(self) -> Path:
         return self.engine_dir / "YuE"
+
+    @property
+    def sheetsage_dir(self) -> Path:
+        """SheetSage2 weights and code, used to transcribe a song before covering it."""
+        return self.root / "models" / "SheetSage2"
 
     # --- data ----------------------------------------------------------------
     @property
@@ -141,6 +161,11 @@ class Layout:
         return self.root / "output" / "music"
 
     @property
+    def transcribe_output_dir(self) -> Path:
+        """Where a transcription of a source recording is written."""
+        return self.root / "output" / "transcriptions"
+
+    @property
     def media_dir(self) -> Path:
         """Directory the program copies finished media into for stable URLs."""
         return self.root / "output" / "media"
@@ -161,12 +186,26 @@ class Layout:
             self.presets_dir,
             self.downloads_dir,
             self.music_output_dir,
+            self.transcribe_output_dir,
             self.media_dir,
         ):
             d.mkdir(parents=True, exist_ok=True)
 
 
-LAYOUT = Layout()
+def _installed_root() -> Path:
+    """The program folder.
+
+    ``AUTUMN_HOME`` relocates it. Child processes - the music worker, the
+    transcriber - resolve their paths against this folder, so a moved install, and a
+    test sandbox, only behaves as one program if the root travels with them.
+    """
+    home = str(os.environ.get("AUTUMN_HOME") or "").strip()
+    if not home:
+        return PROGRAM_DIR
+    return Path(home).expanduser().resolve()
+
+
+LAYOUT = Layout(_installed_root())
 
 # Model folders shown by the asset browser. Keys are ComfyUI folder names.
 MODEL_FOLDERS: tuple[tuple[str, str], ...] = (
